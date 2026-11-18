@@ -14,9 +14,7 @@
  * also what keeps one member's hosts from telling another where they connect. The wording
  * says so, impersonally like every other label, because a list that read as instance-wide
  * would teach the wrong model.
- *
- * Mirrors `design/mock/desktop.html` → Settings → SSH, which is the source of truth for
- * the shape (ADR 0019).
+
  */
 import { useEffect, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
@@ -85,9 +83,7 @@ export function KnownHostsList() {
   return (
     <div className="border-b border-border px-0.5 py-3" data-testid="known-hosts">
       <div className="text-sm font-medium">{t('settings.knownHosts')}</div>
-      <p className="mt-0.5 mb-2 text-xs text-muted-foreground">
-        {t('settings.knownHostsDesc')}
-      </p>
+      <p className="mt-0.5 mb-2 text-xs text-muted-foreground">{t('settings.knownHostsDesc')}</p>
 
       {error && (
         <p className="mb-2 text-sm text-red-500" data-testid="known-hosts-error">

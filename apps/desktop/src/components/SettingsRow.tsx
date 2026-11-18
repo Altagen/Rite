@@ -9,9 +9,8 @@
  * ragged ones). The two shells serve the same bundle, so this was never per-shell CSS:
  * it was fourteen sections inventing fourteen layouts.
  *
- * `design/mock/rite.css` (`.settings-row`) is the shape being matched: what the setting
- * is on the left, the control that changes it on the right, one hairline between rows
- * and none under the last.
+ * One shape, for all fourteen: what the setting is on the left, the control that changes
+ * it on the right, one hairline between rows and none under the last.
  */
 
 import type { ReactNode } from 'react';
@@ -19,6 +18,18 @@ import { SwitchPill } from './Switch';
 
 /** The row geometry, shared by all three so they stack into one list. */
 const ROW = 'flex items-center justify-between gap-4 border-b border-border py-3 last:border-b-0';
+
+/**
+ * The row's title, as an attribute, so what a section OFFERS can be read off the screen.
+ *
+ * Not for one test: `e2e/tests/settings-surfaces.spec.ts` compares what the two shells
+ * show, and before this the only handle was a Tailwind class string. That is why the
+ * check this replaced compared the RAIL and not the rows — and why host-key verification
+ * could sit under Security in the app and under SSH in the drawing of it for two
+ * releases, with nothing failing. A surface nobody can inspect is a surface that drifts.
+ */
+const rowAttr = (title: ReactNode) =>
+  typeof title === 'string' ? { 'data-settings-row': title } : {};
 
 /** A section's heading and, when it needs one, the sentence under it. */
 export function SettingsHead({ title, hint }: { title: string; hint?: ReactNode }) {
@@ -45,7 +56,7 @@ export function SettingsRow({
   children: ReactNode;
 }) {
   return (
-    <div className={ROW}>
+    <div className={ROW} {...rowAttr(title)}>
       <div className="min-w-0">
         <div className="text-sm font-medium">{title}</div>
         {hint && <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{hint}</div>}
@@ -88,6 +99,7 @@ export function SettingsToggle({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       data-testid={testId}
+      {...rowAttr(title)}
       className={`${ROW} w-full text-left disabled:cursor-not-allowed`}
     >
       <span className="min-w-0">

@@ -3,8 +3,8 @@
  * "See all notifications →". A dedicated, paginated list so an inbox with many pending
  * access requests stays usable (the bell dropdown only shows the latest few). Same grant/
  * dismiss actions as the dropdown, backed by the shared useAccessRequests controller.
- * Matches design/mock/notifications.html (frontend-only; the one real notification type
- * today is a collection access request).
+ * Frontend-only, for now: the one real notification type today is a collection access
+ * request.
  */
 
 import { useRef, useState } from 'react';

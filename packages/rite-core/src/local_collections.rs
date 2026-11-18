@@ -57,6 +57,68 @@ struct Header {
     /// the browser survives a round-trip here unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     personal: Option<bool>,
+    /// The vocabulary this collection declares, beyond the words already in use.
+    ///
+    /// COLLECTION-WIDE AND SEALED, which is the scope a sensitive word goes in: it is read
+    /// by this collection's members and by nobody else, and it NEVER TRAVELS UPWARD — a
+    /// collection's own vocabulary cannot become instance-wide. The organisation's list is
+    /// the other scope, public and in the clear, and it is inherited by every collection
+    /// rather than fed by one.
+    ///
+    /// Declared rather than derived, so a word can be agreed on before anything wears it.
+    /// What the words are PUT ON stays in the items, sealed under a different key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    labels: Option<Vec<VocabEntry>>,
+}
+
+/// One word a vocabulary declares, and the colour somebody chose for it.
+///
+/// THE COLOUR BELONGS TO THE WORD. `pci` is the same colour on every machine and in every
+/// collection that can see the word, which is the only reason a colour is worth scanning
+/// for. So it is declared beside the word here, and a machine's own `labels` stay plain
+/// strings — no migration, and nothing to keep in step per item.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VocabWord {
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// What the word means, for whoever did not choose it.
+    ///
+    /// It inherits the WORD's scope and needs no decision of its own: a description on an
+    /// instance word is as public as the word, one on a collection's is sealed with it.
+    /// That is the reason it lives beside the word rather than in a document of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// A vocabulary entry on disk: a bare word, or a word with its colour.
+///
+/// TWO SHAPES, AND THAT IS WHAT KEEPS IT ADDITIVE. A word nobody coloured is written
+/// exactly as it was written before colours existed, so a list that has never been
+/// coloured round-trips byte for byte and an older build still reads all of it. A word
+/// that gains a colour becomes an object; clearing it turns it back into a string. The
+/// browser writes the same two shapes (`formatVocab` in `store/labelsFormat.ts`), which is
+/// what `header_matches_the_browser` holds.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum VocabEntry {
+    Word(String),
+    Full(VocabWord),
+}
+
+impl From<&str> for VocabEntry {
+    fn from(label: &str) -> Self {
+        Self::Word(label.to_string())
+    }
+}
+
+impl VocabEntry {
+    pub fn label(&self) -> &str {
+        match self {
+            Self::Word(w) => w,
+            Self::Full(f) => &f.label,
+        }
+    }
 }
 
 /// A machine as it is stored inside a collection item.
@@ -103,6 +165,18 @@ pub struct MachineRecord {
     pub needs_passphrase: bool,
     #[serde(default)]
     pub needs_password: bool,
+    /// The labels this machine carries.
+    ///
+    /// INSIDE THE ITEM, which is already sealed under the collection's items key — so the
+    /// words are readable by this collection's members and by nobody else, and the server
+    /// holding the row learns nothing. That is what makes a PUBLIC vocabulary safe: `pci`
+    /// may be a word the whole instance shares while which machine wears it is known only
+    /// here (`components/Labels.tsx` holds the three scopes).
+    ///
+    /// `default`, so every record written before labels existed reads as carrying none —
+    /// which is what was true when it was written.
+    #[serde(default)]
+    pub labels: Vec<String>,
 }
 
 /// A machine read back out of a collection, with the item id that addresses it.
@@ -128,6 +202,8 @@ pub struct LocalCollection {
     pub folders: Vec<CollectionFolder>,
     /// Collection-wide active health-check opt-out (ADR 0017).
     pub hc: Option<bool>,
+    /// The vocabulary this collection declares. See `Header::labels`.
+    pub labels: Vec<VocabEntry>,
     /// Whether this collection has a board stored (the blob itself is read separately).
     pub has_board: bool,
 }
@@ -149,6 +225,7 @@ pub async fn create(
         folders: None,
         hc: None,
         personal: None,
+        labels: None,
     };
     let id = collection_store::create_collection(
         db,
@@ -166,6 +243,7 @@ pub async fn create(
         created_at: chrono::Utc::now().timestamp(),
         folders: Vec::new(),
         hc: None,
+        labels: Vec::new(),
         has_board: false,
     })
 }
@@ -184,6 +262,7 @@ pub async fn list(db: &SqlitePool, master_key: &[u8; KEY_LEN]) -> Result<Vec<Loc
             created_at: row.created_at,
             folders: header.folders.unwrap_or_default(),
             hc: header.hc,
+            labels: header.labels.unwrap_or_default(),
             has_board: row.board_enc.is_some(),
         });
     }
@@ -191,29 +270,52 @@ pub async fn list(db: &SqlitePool, master_key: &[u8; KEY_LEN]) -> Result<Vec<Loc
     Ok(out)
 }
 
+/// What an edit to a collection's header carries.
+///
+/// A STRUCT AND NOT EIGHT ARGUMENTS. It was eight once `labels` arrived, which clippy
+/// refuses — rightly: four of them were `Option`s of the same shape, so a call site that
+/// swapped two was a silent bug the compiler could not see. `MachinePatch` below already
+/// does it this way for the same reason.
+///
+/// `Default` is what makes a rename-only edit readable: `CollectionPatch { name, ..d() }`
+/// states that nothing else is being touched, instead of a row of `None`s whose meaning
+/// depends on counting.
+#[derive(Debug, Default)]
+pub struct CollectionPatch {
+    /// Always written. A collection with no name is not a state this vault has.
+    pub name: String,
+    /// Always written too, `None` included — which CLEARS it rather than keeping it. The
+    /// odd one out here, and deliberately: the colour picker has an "none" entry, so the
+    /// absence of a colour is a choice a person can make.
+    pub color: Option<String>,
+    pub folders: Option<Vec<CollectionFolder>>,
+    pub hc: Option<Option<bool>>,
+    /// The declared vocabulary. `None` keeps what is stored; a list REPLACES it, because
+    /// a merge cannot express "take that word out of the list".
+    pub labels: Option<Vec<VocabEntry>>,
+}
+
 /// Rename / recolour a collection by rewriting its encrypted header.
 pub async fn update(
     db: &SqlitePool,
     master_key: &[u8; KEY_LEN],
     id: &str,
-    name: &str,
-    color: Option<&str>,
-    folders: Option<Vec<CollectionFolder>>,
-    hc: Option<Option<bool>>,
+    patch: CollectionPatch,
 ) -> Result<bool> {
     let meta_key = meta_key_of(db, master_key, id).await?;
     // Read-modify-write: a rename must not silently drop folders or the
     // health-check opt-out, which live in the same header blob.
     let current: Header = decrypt_field(&meta_key, &row_of(db, id).await?.name_enc)?;
     let header = Header {
-        name: name.to_string(),
-        color: color.map(str::to_string),
-        folders: folders.or(current.folders),
-        hc: match hc {
+        name: patch.name,
+        color: patch.color,
+        folders: patch.folders.or(current.folders),
+        hc: match patch.hc {
             Some(v) => v,
             None => current.hc,
         },
         personal: current.personal,
+        labels: patch.labels.or(current.labels),
     };
     collection_store::set_name_enc(db, id, &encrypt_field(&meta_key, &header)?).await
 }
@@ -337,6 +439,9 @@ pub struct MachinePatch {
     /// (ADR 0024 §4). `None` keeps what is stored, as every field here does.
     pub needs_passphrase: Option<bool>,
     pub needs_password: Option<bool>,
+    /// The labels, whole. `None` keeps what is stored; a list REPLACES it, because a
+    /// patch that merged them would have no way to express "take that one off".
+    pub labels: Option<Vec<String>>,
     /// Drop the stored key passphrase and keep the key (ADR 0024 §4). A client editing a
     /// machine does not hold its secrets, so it cannot send an `auth_method` with the
     /// passphrase removed — it never had the key.
@@ -433,6 +538,9 @@ pub async fn patch_machine(
     }
     if let Some(v) = patch.hc {
         record.hc = v;
+    }
+    if let Some(v) = patch.labels {
+        record.labels = v;
     }
 
     update_machine(db, master_key, collection_id, item_id, &record).await
@@ -656,9 +764,18 @@ mod tests {
         let (_d, db, mk) = vault_db().await;
         let c = create(db.pool(), &mk, "Old", None).await.unwrap();
         assert!(
-            update(db.pool(), &mk, &c.id, "New", Some("#f7768e"), None, None)
-                .await
-                .unwrap()
+            update(
+                db.pool(),
+                &mk,
+                &c.id,
+                CollectionPatch {
+                    name: "New".into(),
+                    color: Some("#f7768e".into()),
+                    ..Default::default()
+                }
+            )
+            .await
+            .unwrap()
         );
         let all = list(db.pool(), &mk).await.unwrap();
         assert_eq!(all[0].name, "New");
@@ -699,6 +816,7 @@ mod tests {
                 remote_port: 80,
             }],
             hc: None,
+            labels: vec!["pci".into()],
             needs_passphrase: false,
             needs_password: false,
         }
@@ -709,7 +827,7 @@ mod tests {
     /// Captured from `StoredRecord` in accountsConnectionsSource.ts.
     #[test]
     fn machine_record_matches_the_browser() {
-        const FROM_BROWSER: &str = r#"{"name":"web-01","protocol":"ssh","hostname":"10.0.0.5","port":22,"username":"deploy","authMethod":{"type":"publicKey","keyPath":"/home/u/.ssh/id_ed25519"},"color":null,"icon":null,"folder":"Web servers","notes":null,"sshKeepAliveOverride":null,"sshKeepAliveInterval":null,"preconnect":null,"jump":"bastion","forwards":[{"forwardType":"local","bindHost":null,"localPort":8080,"remoteHost":"10.0.0.9","remotePort":80}],"hc":null,"needsPassphrase":false,"needsPassword":false}"#;
+        const FROM_BROWSER: &str = r#"{"name":"web-01","protocol":"ssh","hostname":"10.0.0.5","port":22,"username":"deploy","authMethod":{"type":"publicKey","keyPath":"/home/u/.ssh/id_ed25519"},"color":null,"icon":null,"folder":"Web servers","notes":null,"sshKeepAliveOverride":null,"sshKeepAliveInterval":null,"preconnect":null,"jump":"bastion","forwards":[{"forwardType":"local","bindHost":null,"localPort":8080,"remoteHost":"10.0.0.9","remotePort":80}],"hc":null,"needsPassphrase":false,"needsPassword":false,"labels":["pci"]}"#;
         let parsed: MachineRecord =
             serde_json::from_str(FROM_BROWSER).expect("a browser record must load");
         assert_eq!(parsed, a_machine());
@@ -717,6 +835,16 @@ mod tests {
         let ours = serde_json::to_value(&parsed).unwrap();
         let theirs: serde_json::Value = serde_json::from_str(FROM_BROWSER).unwrap();
         assert_eq!(ours, theirs, "core and browser must agree field for field");
+    }
+
+    /// A record written before labels existed still loads, and writing it back does not
+    /// invent the field — which is what `#[serde(default)]` buys and what makes the shape
+    /// additive rather than a new version of it.
+    #[test]
+    fn a_record_without_labels_carries_none() {
+        const OLD: &str = r#"{"name":"web-01","protocol":"ssh","hostname":"10.0.0.5","port":22,"username":"deploy","authMethod":{"type":"password"}}"#;
+        let parsed: MachineRecord = serde_json::from_str(OLD).expect("an older record must load");
+        assert!(parsed.labels.is_empty());
     }
 
     #[tokio::test]
@@ -820,14 +948,59 @@ mod tests {
     #[test]
     fn header_matches_the_browser() {
         // r##"…"## because a hex colour contains `"#`, which would end an r#"…"# literal.
-        const FROM_BROWSER: &str = r##"{"name":"Production","color":"#f7768e","folders":[{"name":"Web servers","color":"#7c9cf5"},{"name":"Cache","color":null}],"hc":false}"##;
+        const FROM_BROWSER: &str = r##"{"name":"Production","color":"#f7768e","folders":[{"name":"Web servers","color":"#7c9cf5"},{"name":"Cache","color":null}],"hc":false,"labels":["pci",{"label":"prod","color":"#7c9cf5"},{"label":"client-acme","description":"Under the ACME contract"}]}"##;
         let parsed: Header = serde_json::from_str(FROM_BROWSER).expect("browser header must load");
         assert_eq!(parsed.name, "Production");
         assert_eq!(parsed.folders.as_ref().unwrap().len(), 2);
         assert_eq!(parsed.hc, Some(false));
+        // The collection's declared vocabulary rides the same blob, so it is part of the
+        // same contract — and BOTH SHAPES are in the fixture on purpose. A word with no
+        // colour is a bare string, exactly as it was written before colours existed; one
+        // that has a colour is an object. A build that normalised them to one shape would
+        // rewrite every stored header the first time anything touched it, and the
+        // `assert_eq!(ours, theirs)` below is what catches that.
+        //
+        // A DESCRIPTION IS IN THE FIXTURE, AND IT IS THE THIRD ENTRY FOR A REASON: the
+        // field was added after this test was written, so for a while the round trip
+        // proved a shape that no longer existed. A carrier that forgets the field drops
+        // it in silence — a Zod schema did exactly that — and the fixture is the only
+        // thing here that notices. `e2e/vocab-parity-check.mjs` holds the declarations.
+        assert_eq!(
+            parsed.labels.as_deref(),
+            Some(
+                &[
+                    VocabEntry::from("pci"),
+                    VocabEntry::Full(VocabWord {
+                        label: "prod".into(),
+                        color: Some("#7c9cf5".into()),
+                        description: None,
+                    }),
+                    VocabEntry::Full(VocabWord {
+                        label: "client-acme".into(),
+                        color: None,
+                        description: Some("Under the ACME contract".into()),
+                    }),
+                ][..]
+            )
+        );
         let ours = serde_json::to_value(&parsed).unwrap();
         let theirs: serde_json::Value = serde_json::from_str(FROM_BROWSER).unwrap();
         assert_eq!(ours, theirs, "header must round-trip field for field");
+    }
+
+    /// A header written before labels existed still loads: every field on it is
+    /// `#[serde(default)]`, which is what makes the shape additive rather than a version.
+    #[test]
+    fn a_header_without_labels_declares_none() {
+        const OLD: &str = r#"{"name":"Home lab","color":null}"#;
+        let parsed: Header = serde_json::from_str(OLD).expect("an older header must load");
+        assert_eq!(parsed.labels, None);
+        // And writing it back does not invent an empty list, which would rewrite every
+        // stored header the first time anything touched it.
+        assert_eq!(
+            serde_json::to_string(&parsed).unwrap(),
+            r#"{"name":"Home lab","color":null}"#
+        );
     }
 
     /// A rename must not quietly discard the folders stored in the same blob.
@@ -849,18 +1022,29 @@ mod tests {
             db.pool(),
             &mk,
             &c.id,
-            "Home lab",
-            None,
-            Some(folders.clone()),
-            Some(Some(false)),
+            CollectionPatch {
+                name: "Home lab".into(),
+                folders: Some(folders.clone()),
+                hc: Some(Some(false)),
+                labels: Some(vec!["pci".into(), "prod".into()]),
+                ..Default::default()
+            },
         )
         .await
         .unwrap();
 
         // Rename only — folders and hc are untouched.
-        update(db.pool(), &mk, &c.id, "Lab", None, None, None)
-            .await
-            .unwrap();
+        update(
+            db.pool(),
+            &mk,
+            &c.id,
+            CollectionPatch {
+                name: "Lab".into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
         let got = &list(db.pool(), &mk).await.unwrap()[0];
         assert_eq!(got.name, "Lab");
         assert_eq!(
@@ -868,6 +1052,44 @@ mod tests {
             "an empty folder must survive a rename"
         );
         assert_eq!(got.hc, Some(false));
+        // The declared vocabulary is in that same blob, so a rename must not drop it
+        // either — and the test above would have passed while it did.
+        assert_eq!(
+            got.labels,
+            vec![VocabEntry::from("pci"), VocabEntry::from("prod")]
+        );
+
+        // A list REPLACES, because a merge cannot express "take that word out".
+        update(
+            db.pool(),
+            &mk,
+            &c.id,
+            CollectionPatch {
+                name: "Lab".into(),
+                labels: Some(vec!["prod".into()]),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let got = &list(db.pool(), &mk).await.unwrap()[0];
+        assert_eq!(got.labels, vec![VocabEntry::from("prod")]);
+        assert_eq!(got.folders, folders, "and the folders are still there");
+
+        // An empty list is a real state and not "keep what is stored".
+        update(
+            db.pool(),
+            &mk,
+            &c.id,
+            CollectionPatch {
+                name: "Lab".into(),
+                labels: Some(Vec::new()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert!(list(db.pool(), &mk).await.unwrap()[0].labels.is_empty());
     }
 
     #[tokio::test]

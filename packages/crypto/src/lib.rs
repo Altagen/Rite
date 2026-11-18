@@ -16,11 +16,18 @@ use argon2::{
     Argon2, PasswordHash, PasswordVerifier,
     password_hash::{PasswordHasher, SaltString},
 };
-use chacha20poly1305::aead::rand_core::RngCore;
+
 #[allow(deprecated)]
+// chacha20poly1305 0.11 is the same RustCrypto generation aes-gcm 0.11 was: no `OsRng`
+// re-export and no `generic_array`. Random material comes from the `Generate` trait — the
+// system RNG, panicking if it fails, which is the contract `OsRng.fill_bytes` had — and a
+// key or a nonce is built from its slice rather than wrapped in a `GenericArray`. The
+// algorithm, the 12-byte nonce and the appended tag are untouched, so everything already
+// sealed still opens: `collection_round_trip` and `e2e/collection-crypto-check.mjs` are
+// what say so rather than this comment.
 use chacha20poly1305::{
-    ChaCha20Poly1305,
-    aead::{Aead, KeyInit, OsRng, generic_array::GenericArray},
+    ChaCha20Poly1305, Key, Nonce,
+    aead::{Aead, Generate, KeyInit},
 };
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -84,15 +91,14 @@ pub struct EncryptedData {
 /// Encrypt data with ChaCha20-Poly1305
 #[allow(deprecated)]
 pub fn encrypt(key: &MasterKey, plaintext: &[u8]) -> Result<EncryptedData> {
-    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(key.as_bytes()));
+    let cipher = ChaCha20Poly1305::new(Key::from_slice(key.as_bytes()));
 
     // Generate random nonce
-    let mut nonce_bytes = [0u8; 12];
-    OsRng.fill_bytes(&mut nonce_bytes);
-    let nonce = GenericArray::from_slice(&nonce_bytes);
+    let nonce = Nonce::generate();
+    let nonce_bytes: [u8; 12] = nonce.into();
 
     let ciphertext = cipher
-        .encrypt(nonce, plaintext)
+        .encrypt(&nonce, plaintext)
         .map_err(|e| anyhow!("Encryption failed: {}", e))?;
 
     Ok(EncryptedData {
@@ -105,9 +111,9 @@ pub fn encrypt(key: &MasterKey, plaintext: &[u8]) -> Result<EncryptedData> {
 /// Decrypt data with ChaCha20-Poly1305
 #[allow(deprecated)]
 pub fn decrypt(key: &MasterKey, encrypted: &EncryptedData) -> Result<Vec<u8>> {
-    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(key.as_bytes()));
+    let cipher = ChaCha20Poly1305::new(Key::from_slice(key.as_bytes()));
 
-    let nonce = GenericArray::from_slice(&encrypted.nonce);
+    let nonce = Nonce::from_slice(&encrypted.nonce);
 
     cipher
         .decrypt(nonce, encrypted.data.as_ref())
@@ -116,9 +122,7 @@ pub fn decrypt(key: &MasterKey, encrypted: &EncryptedData) -> Result<Vec<u8>> {
 
 /// Generate a random salt for key derivation
 pub fn generate_salt() -> [u8; 16] {
-    let mut salt = [0u8; 16];
-    OsRng.fill_bytes(&mut salt);
-    salt
+    <[u8; 16]>::generate()
 }
 
 /// Validate password strength

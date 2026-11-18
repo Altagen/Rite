@@ -1,5 +1,5 @@
 /**
- * Context pill (ADR 0014 — navigation skeleton, transposed from design/mock).
+ * Context pill (ADR 0014 — navigation skeleton).
  *
  * The header's context switcher: a pill showing the active context (local vault or
  * a server) with a dropdown to switch quickly, plus "Manage…" which opens the full

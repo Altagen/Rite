@@ -5,7 +5,7 @@
  */
 
 import type { SplitTarget } from '../types/pane';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
@@ -17,10 +17,7 @@ import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandle
 import { useLayouts } from '../store/layouts';
 import { broadcastTargets } from '../store/broadcast';
 import { attachImeGuard } from '../utils/imeGuard';
-import {
-  attachTerminalClipboard,
-  DEFAULT_CLIPBOARD_MODE,
-} from '../utils/terminalClipboard';
+import { attachTerminalClipboard, DEFAULT_CLIPBOARD_MODE } from '../utils/terminalClipboard';
 import { useAutoReconnect } from '../store/autoReconnect';
 import { useTranslation } from '../i18n/i18n';
 import { useShortcut, useBindingText } from '../shortcuts/useShortcut';
@@ -47,6 +44,20 @@ interface TerminalProps {
   initialCommand?: string;
   /** Why this pane is not what was asked for — see TerminalSession.note. */
   note?: string;
+  /**
+   * What this pane is, when it is not a plain terminal.
+   *
+   * Three slots rather than a second copy of this component: an agent pane is a
+   * terminal with a different header, and the xterm lifecycle below it is where the
+   * leaked resize listeners of 0.2.7 lived. Duplicating that to change a chip would
+   * duplicate the class of bug with it.
+   *
+   * `badge` is the chip beside the name; `subtitle` the muted line after it;
+   * `leadActions` the buttons that belong to this kind alone, before the shared ones.
+   */
+  badge?: string;
+  subtitle?: string;
+  leadActions?: ReactNode;
   onDetach?: () => void; // Optional - callback to detach this pane into a new tab
   onDragStart?: (e: React.DragEvent) => void; // Optional - callback when pane drag starts
   onDragEnd?: () => void; // Optional - callback when pane drag ends
@@ -85,6 +96,9 @@ export function Terminal({
   onSplitWith,
   initialCommand,
   note,
+  badge,
+  subtitle,
+  leadActions,
   onDetach,
   onDragStart,
   onDragEnd,
@@ -384,6 +398,9 @@ export function Terminal({
             // xterm's own paste, so the bracketing and the `bracketedPasteMode` it
             // depends on stay the library's business.
             paste: (text) => xtermRef.current?.paste(text),
+            // And xterm's own clearSelection, for the same reason: the highlight is
+            // drawn from its selection service, not from a DOM selection.
+            release: () => xtermRef.current?.clearSelection(),
           })
         : null;
 
@@ -749,9 +766,7 @@ export function Terminal({
       onDrop={onDrop}
     >
       {/* Terminal Header - keep pointer events enabled for grip dots */}
-      <div
-        className="pointer-events-auto flex w-full items-center justify-between border-b border-border bg-card px-4 py-2 flex-shrink-0"
-      >
+      <div className="pointer-events-auto flex w-full items-center justify-between border-b border-border bg-card px-4 py-2 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             {/* Only show connection status for remote terminals */}
@@ -766,7 +781,17 @@ export function Terminal({
               </>
             )}
             <span className="text-sm font-medium">{connectionName}</span>
+            {badge && (
+              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
+                {badge}
+              </span>
+            )}
           </div>
+          {subtitle && (
+            <span className="truncate text-xs text-muted-foreground" title={subtitle}>
+              {subtitle}
+            </span>
+          )}
           {!isLocalTerminal && (
             <>
               {status === 'connecting' && (
@@ -783,6 +808,7 @@ export function Terminal({
         </div>
 
         <div className="flex items-center gap-2">
+          {leadActions}
           {/* Drag handle - 6 grip dots */}
           {onDragStart && onDragEnd && (
             <div

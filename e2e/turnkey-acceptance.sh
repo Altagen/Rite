@@ -32,8 +32,37 @@ IMAGE="${RITE_IMAGE:-}"
 if [ -z "$IMAGE" ]; then
   IMAGE=localhost/rite-server:acceptance
   echo "— building the server under test (incremental, in the ISO-CI image)"
-  podman run --rm -v "$PWD":/workspace:Z -w /workspace rite-ci:local \
-    bash -lc 'cargo build --release -p rite-server' >/dev/null 2>&1
+  # THE SAME REGISTRY VOLUME THE GATE'S RUST STEP USES, and the reason is not only speed.
+  # This ran against an empty registry, and `cargo build -p rite-server` resolves the
+  # WHOLE workspace — so it fetched every crate in the lockfile on every acceptance run
+  # and failed outright the first time one of them did not come down:
+  #
+  #   error: failed to get `image` as a dependency of package `rite-desktop`
+  #
+  # A step whose success depends on a cold download of four hundred crates is a step that
+  # fails for reasons that have nothing to do with what it tests.
+  #
+  # AND THE OUTPUT IS NOT THROWN AWAY. It was `>/dev/null 2>&1`, so that error reached
+  # nobody: the gate ended on `GATE=101` after a line saying it had started building, and
+  # the reason had to be reproduced by hand. A build log is noisy; a build log nobody can
+  # read when it fails is worse.
+  #
+  # TO A FILE AND NOT THROUGH `| tail`, because a pipeline's status is the LAST command's:
+  # piping cargo into tail would hand `set -e` a successful tail and let a failed build
+  # walk straight past it. That is the same mistake as the silent wait this gate's check
+  # runner used to have, and it would have been introduced here while fixing its twin.
+  podman volume create rite-cargo-registry >/dev/null 2>&1 || true
+  build_log=$(mktemp)
+  if ! podman run --rm -v "$PWD":/workspace:Z \
+    -v rite-cargo-registry:/usr/local/cargo/registry \
+    -w /workspace rite-ci:local \
+    bash -lc 'cargo build --locked --release -p rite-server' >"$build_log" 2>&1; then
+    echo "  the server under test did not build. Its last words:"
+    tail -n 12 "$build_log" | sed 's/^/    /'
+    rm -f "$build_log"
+    exit 1
+  fi
+  rm -f "$build_log"
   # A context holding the binary and nothing else: the repo's .dockerignore excludes
   # `target/` (rightly — it keeps Containerfile.server's context small), and a 15 MB
   # context beats shipping the working tree to the build daemon anyway.

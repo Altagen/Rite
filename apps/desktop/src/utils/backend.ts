@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import type { VocabEntry } from '../store/labelsFormat';
 import { errorHandler, ErrorSeverity, ErrorCategory } from './errorHandler';
 import { transport } from './transport';
 // Type-only, so it is erased at build time and the store ↔ backend cycle stays a
@@ -119,6 +120,18 @@ const ConnectionInfoSchema = z.object({
   color: z.string().nullable().optional(),
   icon: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
+  /**
+   * The labels this machine carries. ZOD STRIPS WHAT IT DOES NOT DECLARE, and this was
+   * not declared — so every machine read through this schema came back without them,
+   * however faithfully the core had sealed and returned them.
+   *
+   * It was invisible from both ends. `machine-labels.spec.ts` asserts against the ROUTE
+   * and passed throughout; the screens that use them — the chips on a card, the library's
+   * search, the collection's `Label ▾` filter, the picker's offers — all read an empty
+   * list and had nothing to show, which looks like "nothing is labelled" rather than like
+   * a bug. Found by a picker that offered no words for a machine that visibly had one.
+   */
+  labels: z.array(z.string()).optional(),
   sshKeepAliveOverride: z.string().nullable().optional(),
   sshKeepAliveInterval: z.number().nullable().optional(),
   preconnect: z.string().nullable().optional(),
@@ -267,6 +280,28 @@ export const BackendLayouts = {
   put: (text: string) => invokeWithValidation('set_layouts', z.null(), { text }),
 } as const;
 
+/**
+ * The names a person gave to conversations (ADR 0022 §6), on the machine.
+ *
+ * A document of its own and not a table in the workspace file: a mark is keyed to a
+ * conversation a vendor's tool can rotate away, and Rite may prune what it owns while it
+ * must not prune a person's config. JSON, because nobody edits this one by hand.
+ */
+export const BackendMarks = {
+  get: () => invokeWithValidation('get_marks', LayoutsFileSchema),
+  put: (text: string) => invokeWithValidation('set_marks', z.null(), { text }),
+} as const;
+
+/** The account's copy of the same, sealed client-side. See `BackendUserLayouts`. */
+export const BackendUserMarks = {
+  get: () =>
+    invokeWithValidation(
+      'user_marks_get',
+      z.object({ blob: z.string().nullable(), updatedAt: z.number().nullable() }),
+    ),
+  set: (blob: string) => invokeWithValidation('user_marks_set', z.null(), { blob }),
+} as const;
+
 // Settings Commands
 export const BackendSettings = {
   /**
@@ -391,9 +426,17 @@ export const BackendTerminal = {
 
   /**
    * Connect to a terminal (SSH connection)
+   *
+   * `command` runs one program under the PTY instead of the login shell — an
+   * adapter's resume line, for an agent pane (ADR 0022 §7.1). Omitted for every
+   * terminal pane, which is what a shell is for.
    */
-  connectTerminal: (connectionId: string, sessionSecret?: string) =>
-    invokeWithValidation('connect_terminal', StringSchema, { connectionId, sessionSecret }),
+  connectTerminal: (connectionId: string, sessionSecret?: string, command?: string) =>
+    invokeWithValidation('connect_terminal', StringSchema, {
+      connectionId,
+      sessionSecret,
+      command,
+    }),
 
   /**
    * Connect to a local terminal with custom shell.
@@ -418,6 +461,16 @@ export const BackendTerminal = {
       inheritCwdFrom: start?.inheritCwdFrom,
       cwd: start?.cwd,
     }),
+
+  /**
+   * A local PTY running ONE PROGRAM rather than a shell (ADR 0022 §7.1).
+   *
+   * The resume line of an agent on this machine. argv and not a string: it reaches
+   * `execvp` as written, so a space or a quote in a project path is data rather than
+   * syntax — the same reason the SSH side names the program at the channel.
+   */
+  connectLocalProgram: (argv: string[], cwd?: string) =>
+    invokeWithValidation('connect_local_program', StringSchema, { argv, cwd }),
 
   /**
    * Run a pre-connect hook: a one-shot local command in a PTY, before SSH.
@@ -449,6 +502,8 @@ export const BackendTerminal = {
   startQuickForward: (args: {
     connectionId: string;
     target: QuickExecTarget;
+    /** See `quickSshConnect`. `connectionId` is echoed back, so it proves nothing. */
+    origin?: { collectionId: string; itemId: string };
     bindHost?: string;
     localPort: number;
     remoteHost: string;
@@ -465,6 +520,8 @@ export const BackendTerminal = {
       localPort: args.localPort,
       remoteHost: args.remoteHost,
       remotePort: args.remotePort,
+      collectionId: args.origin?.collectionId,
+      itemId: args.origin?.itemId,
     }),
 
   /** Stop a running port forward by id. */
@@ -489,7 +546,13 @@ export const BackendTerminal = {
    * Run a one-shot command on an ad-hoc target (accounts client-execute): the
    * browser passes the already-decrypted target and its resolved jump chain.
    */
-  machineExecQuick: (target: QuickExecTarget, command: string) =>
+  machineExecQuick: (
+    target: QuickExecTarget,
+    command: string,
+    // See `quickSshConnect`. Same proof, because this is the same outbound connection
+    // with a command in place of a shell.
+    origin?: { collectionId: string; itemId: string },
+  ) =>
     invokeWithValidation('machine_exec_quick', RemoteCommandOutputSchema, {
       host: target.host,
       port: target.port,
@@ -497,6 +560,86 @@ export const BackendTerminal = {
       authMethod: target.authMethod,
       jumps: target.jumps ?? [],
       command,
+      collectionId: origin?.collectionId,
+      itemId: origin?.itemId,
+    }),
+
+  /**
+   * Agent discovery on a saved connection (ADR 0022 §4). One command per machine, asked
+   * for explicitly — the same shape as `machineExec`, on its own route because it answers
+   * to its own gate: an administrator may allow container listings while refusing to let
+   * the product enumerate home directories.
+   */
+  agentProbe: (connectionId: string, command: string, sessionSecret?: string) =>
+    invokeWithValidation('agent_probe', RemoteCommandOutputSchema, {
+      connectionId,
+      command,
+      sessionSecret,
+    }),
+
+  /**
+   * Agent discovery on THIS machine (ADR 0022 §4).
+   *
+   * No connection and no credential: the CLIs are on the computer in front of the
+   * person, so there is nothing to unlock and nothing to reach. A desktop window serves
+   * this itself in every context, including one signed into an instance; a deployed
+   * instance refuses it, because its "local" is the container the server runs in.
+   */
+  agentProbeLocal: (command: string) =>
+    invokeWithValidation('agent_probe_local', RemoteCommandOutputSchema, { command }),
+
+  /**
+   * Removing one conversation, on the three routes discovery already takes.
+   *
+   * SAME GATE, NO SECOND SWITCH (see `agent_manage` in rite-server): a gate decides
+   * whether Rite generates the traffic, never what a person may do on a host — anyone
+   * who can open a terminal pane there can type `rm`. Named apart from `probe` all the
+   * same, because a route that runs `rm` under a name that means "look" is a lie to
+   * whoever reads a log.
+   */
+  agentManage: (connectionId: string, command: string, sessionSecret?: string) =>
+    invokeWithValidation('agent_manage', RemoteCommandOutputSchema, {
+      connectionId,
+      command,
+      sessionSecret,
+    }),
+
+  /** Removing one conversation on THIS machine. See `agentProbeLocal`. */
+  agentManageLocal: (command: string) =>
+    invokeWithValidation('agent_manage_local', RemoteCommandOutputSchema, { command }),
+
+  /** Removing one conversation on an ad-hoc target. See `machineExecQuick`. */
+  agentManageQuick: (
+    target: QuickExecTarget,
+    command: string,
+    origin?: { collectionId: string; itemId: string },
+  ) =>
+    invokeWithValidation('agent_manage_quick', RemoteCommandOutputSchema, {
+      host: target.host,
+      port: target.port,
+      username: target.username,
+      authMethod: target.authMethod,
+      jumps: target.jumps ?? [],
+      command,
+      collectionId: origin?.collectionId,
+      itemId: origin?.itemId,
+    }),
+
+  /** The same discovery on an ad-hoc target. See `machineExecQuick` for the origin. */
+  agentProbeQuick: (
+    target: QuickExecTarget,
+    command: string,
+    origin?: { collectionId: string; itemId: string },
+  ) =>
+    invokeWithValidation('agent_probe_quick', RemoteCommandOutputSchema, {
+      host: target.host,
+      port: target.port,
+      username: target.username,
+      authMethod: target.authMethod,
+      jumps: target.jumps ?? [],
+      command,
+      collectionId: origin?.collectionId,
+      itemId: origin?.itemId,
     }),
 
   /**
@@ -517,6 +660,9 @@ export const BackendTerminal = {
     // arrive here as a decrypted host — so a saved one says which item it is, and the
     // server checks that against this caller's membership (`quick_ssh` in rite-server).
     origin?: { collectionId: string; itemId: string },
+    // See `connectTerminal`. This is the route a browser reaches a collection's machine
+    // by, so an agent pane in the web UI passes its resume line here.
+    command?: string,
   ) =>
     invokeWithValidation('quick_ssh_connect', StringSchema, {
       host,
@@ -526,6 +672,7 @@ export const BackendTerminal = {
       jumps,
       collectionId: origin?.collectionId,
       itemId: origin?.itemId,
+      command,
     }),
 
   /**
@@ -645,6 +792,15 @@ const ServerModeSchema = z.object({
     })
     .optional(),
   // Collection governance policy (admin → Collections). Absent ⇒ permissive defaults.
+  // Where the agent manager may discover and read (ADR 0022 §3). Its own key rather than
+  // `dashboardPolicy`: allowing `docker ps` is not the same decision as allowing a home
+  // directory to be enumerated. No `minInterval` — discovery is explicit, never periodic.
+  agentPolicy: z
+    .object({
+      webui: z.boolean(),
+      clients: z.boolean(),
+    })
+    .optional(),
   // Where layouts may be used (ADR 0027): `webui` for a browser, `clients` for a desktop
   // window signed into this instance. Absent ⇒ both, like a server never configured.
   // Policy only — the blob is sealed client-side, so the server cannot enforce it.
@@ -667,6 +823,7 @@ export type HealthcheckPolicy = NonNullable<z.infer<typeof ServerModeSchema>['he
 export type CollectionPolicy = NonNullable<z.infer<typeof ServerModeSchema>['collectionPolicy']>;
 export type DashboardPolicy = NonNullable<z.infer<typeof ServerModeSchema>['dashboardPolicy']>;
 export type LayoutsPolicy = NonNullable<z.infer<typeof ServerModeSchema>['layoutsPolicy']>;
+export type AgentPolicy = NonNullable<z.infer<typeof ServerModeSchema>['agentPolicy']>;
 // Active health-check probe (ADR 0017). The client sends host:port (decrypted from its own
 // blob) per target; the server returns a reachability verdict. `unsupported` ≠ `down` — it
 // means the method can't run (e.g. icmp without privileges), so the UI won't paint it offline.
@@ -952,6 +1109,13 @@ export const BackendAdmin = {
   setDashboardPolicy: (policy: DashboardPolicy) =>
     invokeWithValidation(
       'admin_set_dashboard_policy',
+      z.null(),
+      policy as unknown as Record<string, unknown>,
+    ),
+  /** Set the agent-manager policy (org-admin, ADR 0022). Sends the whole policy object. */
+  setAgentPolicy: (policy: AgentPolicy) =>
+    invokeWithValidation(
+      'admin_set_agent_policy',
       z.null(),
       policy as unknown as Record<string, unknown>,
     ),
@@ -1269,6 +1433,23 @@ export const BackendUserLayouts = {
 } as const;
 
 /** A collection in a local vault (ADR 0018) — no members, no roles, no sharing. */
+/**
+ * A vocabulary entry on the wire: a bare word, or a word with what was chosen for it.
+ *
+ * ONE SCHEMA, because Zod STRIPS what it does not declare. Two inline copies of this union
+ * carried the colour and not the description, so a description reached the server, was
+ * stored, came back — and was removed on the way into the page, in silence. The shape it
+ * mirrors is `VocabEntry` in `store/labelsFormat.ts`.
+ */
+const VocabEntrySchema = z.union([
+  z.string(),
+  z.object({
+    label: z.string(),
+    color: z.string().optional(),
+    description: z.string().optional(),
+  }),
+]);
+
 const LocalCollectionSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -1278,6 +1459,9 @@ const LocalCollectionSchema = z.object({
     .array(z.object({ name: z.string(), color: z.string().nullable().optional() }))
     .default([]),
   hc: z.boolean().nullable().optional(),
+  // The vocabulary this collection declares (ADR 0016's sealed header). A word is bare
+  // when nobody coloured it, an object when somebody did.
+  labels: z.array(VocabEntrySchema).default([]),
   hasBoard: z.boolean().default(false),
 });
 export type LocalCollection = z.infer<typeof LocalCollectionSchema>;
@@ -1305,6 +1489,41 @@ export type LocalMachine = z.infer<typeof LocalMachineSchema>;
  * carries credentials and no key ever reaches this process. The zero-knowledge
  * endpoints are the other ones — there the client holds the keys.
  */
+/**
+ * The instance vocabulary: the label words declared above the collections.
+ *
+ * ONE PAIR, TWO SUPPORTS, chosen by the server because the key is on its side. On an
+ * instance it is a plaintext row every member reads; on a local vault it is a document
+ * sealed under the master key, because the only reader there is the owner. A local vault
+ * HAS this scope — it is an instance of Rite with collections under it, so a word declared
+ * once does not have to be redeclared in each one.
+ *
+ * Reading is open to whoever got this far; writing goes through `/api/admin`, where the
+ * role check lives and which a local vault passes by construction (ADR 0009, ADR 0018).
+ */
+export const BackendLabels = {
+  get: () =>
+    invokeWithValidation(
+      'labels_get',
+      z.object({
+        // A word is a bare string when nobody chose a colour for it, and an object when
+        // somebody did. Both shapes, because a list written before colours existed holds
+        // strings and must keep working — `acceptedVocab` normalises what comes back.
+        labels: z.array(VocabEntrySchema),
+        /**
+         * Which support answered. `locked` is a vault that is shut — a write is refused
+         * and the screen says so; `none` is no vault at all, and the screen is absent.
+         * The default is `none`: an older server that does not report one has no
+         * vocabulary this client can write, and drawing an editor over that was the
+         * defect this field exists for.
+         */
+        support: z.enum(['instance', 'vault', 'locked', 'none']).default('none'),
+      }),
+      {},
+    ),
+  set: (labels: VocabEntry[]) => invokeWithValidation('labels_set', z.null(), { labels }),
+};
+
 export const BackendLocal = {
   collections: () => invokeWithValidation('local_collections', z.array(LocalCollectionSchema), {}),
   createCollection: (name: string, color?: string | null) =>
@@ -1315,6 +1534,8 @@ export const BackendLocal = {
     color?: string | null;
     folders?: { name: string; color: string | null }[];
     hc?: boolean | null;
+    /** Absent keeps what is stored; a list replaces it. Two shapes — see `formatVocab`. */
+    labels?: VocabEntry[];
   }) => invokeWithValidation('local_update_collection', z.object({ ok: z.boolean() }), args),
   deleteCollection: (id: string) =>
     invokeWithValidation('local_delete_collection', z.object({ ok: z.boolean() }), { id }),
@@ -1358,6 +1579,9 @@ export const Backend = {
   Auth: BackendAuth,
   Settings: BackendSettings,
   Layouts: BackendLayouts,
+  Marks: BackendMarks,
+  UserMarks: BackendUserMarks,
+  Labels: BackendLabels,
   Connections: BackendConnections,
   Terminal: BackendTerminal,
   Ssh: BackendSsh,

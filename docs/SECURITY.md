@@ -139,12 +139,35 @@ The following are encrypted before storage:
 - Sync credentials
 
 ### Metadata (Not Encrypted)
-- Host names (for indexing and search)
 - Protocol types
-- Tags and groups
 - Last connection timestamp
 
-**Rationale**: Metadata needs to be searchable. Highly sensitive users can enable full database encryption.
+**Rationale**: what the database must index without a key. A machine's own record — its
+name, its host, its labels — is **not** in this list: it lives inside the collection's
+item, sealed under that collection's items key (ADR 0016), and the search runs on what the
+client has already opened.
+
+### Copying the vault is not exporting it
+
+`vault.db` is one file and copying it is a **complete** backup: everything is in it,
+sealed, including what Rite remembers about conversations. A copy is worth exactly what
+the master password is worth.
+
+| what you want | what to do |
+|---|---|
+| a snapshot before a risky operation | **copy the file** |
+| the same vault on another computer of yours | **copy the file** — but open it in one place at a time |
+| give machines or collections to somebody else | **export** — never hand over the file |
+
+Two reasons the copy is the wrong gesture for the third row. It carries **everything**,
+including every credential and every byte your master password reaches; and two people
+opening copies of one vault diverge with no merge and no warning — the last write wins, as
+it does for every document Rite keeps.
+
+An export is a document of what you chose to bring over: machines, collections, the
+vocabulary and the workspace document. It does not carry the names, colours and labels you
+gave to **conversations**: those are discovered on a host rather than stored as records,
+so they stay with the vault that read them (docs/ROADMAP.md says why).
 
 ### Keyring Integration
 - **Linux**: Secret Service API (GNOME Keyring, KWallet)
@@ -205,6 +228,86 @@ The two halves are **not equally strong**, and we do not claim otherwise:
 
 Only the cards that execute on a host are governed. Overview, port forwarding and the collection
 Board touch no host and are never gated.
+
+### Governance of agent discovery (ADR 0022)
+
+`agent_policy { webui, clients }` governs **looking**: discovery, the detail panel's live
+read of one conversation's directory, and reading what is in effect on a machine. Same two halves, same strengths as above, and no `minInterval` — the
+user picks a machine and asks, so there is no automatic refresh to floor.
+
+**Removing a conversation answers to the same key, and there is no second switch.** The
+manager can delete one — the tool's own transcript, on the machine it was read on — and
+that is not a separate decision for an administrator: anyone who can open a terminal pane
+on a machine can type `rm` into it, so a `manage` half would hide a button and change
+nothing. What it would do is read as a confinement while being none. The three `manage`
+routes therefore sit behind `agent_policy` exactly as the three `probe` routes do, and
+`e2e/agent-policy-check.mjs` holds both pairs.
+
+The command is built on the client, where the one check that matters lives: the path has
+to be named by the conversation's own id (`agentRemoveCmd`), so a parser that drifted
+produces no command rather than a command that removes something else.
+
+Its own key rather than `dashboard_policy`, because allowing `docker ps` is not the same
+decision as allowing a home directory to be enumerated, and an administrator must be able
+to make them separately.
+
+**Running an agent is not governed, and that is a decision.** A server cannot stop it:
+anyone who can open a terminal pane on a machine can type `claude --resume <id>` there
+themselves, and an agent runs under the SSH account the user already had. A switch would
+hide a button, be relied on, and change nothing. The place to stop agents is the host — do
+not install the CLI, or constrain the account that would run it.
+
+Neither exec gate is a confinement either. Both routes take the command from the caller,
+and so does the one that opens a session. What they decide is whether Rite generates that
+traffic and reads those files on the user's behalf.
+
+### Labels: the scope is the confidentiality decision (ADR 0016)
+
+A label is a word somebody puts on a machine or a conversation. Three scopes, and which one
+a word is in decides who may read it:
+
+- **instance** — a plaintext row, read by every member, written by an administrator
+  (`PUT /api/admin/labels`; `GET /api/labels` is open to any authenticated caller). In the
+  clear deliberately: a word everyone may read and use has nothing to hide from the server,
+  and sealing it under a key every member holds would buy a key rotation path on every
+  member removal and no secrecy. On a **local vault** the same scope exists — a vault is an
+  instance of Rite with collections under it — and is sealed under the master key instead,
+  because there the only reader is the owner.
+- **collection** — in the collection's own header, under its meta key. Read by its members
+  and nobody else, and it **never travels upward**: a collection's vocabulary cannot become
+  instance-wide. This is where a sensitive word belongs.
+- **personal** — the marks document, on the supports ADR 0022 §6 names.
+
+**What is labelled is always sealed, whatever the word's scope.** A machine lives in a
+collection and a collection is encrypted, so `pci` may be a word the whole instance shares
+while *which machine wears it* is readable only by that collection's members. The scope
+governs the vocabulary; it never governs the assignment.
+
+**The search is therefore client-side, by necessity.** A label names a project, a customer,
+a person, and it is sealed inside the record it is on. An index the server could query is
+the one thing this model does not allow, so the box searches the already-decrypted list on
+screen.
+
+### A host the caller named (`allow_quick_ssh`)
+
+What **is** a boundary. A request may name a host instead of a saved connection, and on a
+deployed instance the server is what opens the connection. `allow_quick_ssh` is off by
+default; a saved target gets through by proving where it came from — the collection item
+it was decrypted from, checked against this caller's membership.
+
+Four routes take a host from the caller: a session, a one-shot command, an agent probe,
+and a port forward. The check lived in the first, and the other three were each written
+from the shape of one that did not have it — so an instance with the setting off still
+lent any authenticated member the server's network position. One function answers for all
+four now (`ad_hoc_target_allowed`), and `e2e/server-authz-check.mjs` holds every one.
+
+The member supplies the credentials, so this was never about a stolen secret. It is about
+reach: what the server gets to and the member does not.
+
+The other half of the same question is a saved id. The two routes that take one answered
+`Application is locked` on a deployed instance — held by that instance having no vault
+key rather than by a rule, and the connection table has no owner column. They refuse
+outright now, and name the route that does work.
 
 ## Configuration Security
 
@@ -345,6 +448,27 @@ We aim to respond within 48 hours and will coordinate disclosure timeline.
 6. **Self-host sync** if you handle highly sensitive servers
 7. **Keep RITE updated** for security patches
 8. **Don't log credentials** (disable debug mode in production)
+
+## Upgrading to 0.2.9: two files 0.2.8 left in the clear
+
+0.2.8 and earlier kept a conversation's names, colours and labels — the marks document
+and the harvested vocabulary — in two JSON files beside the configuration:
+
+```
+~/.config/rite/marks.json
+~/.config/rite/labels.json
+```
+
+0.2.9 does not write them any more. A labelled conversation names a project and a
+customer, so those belong under a key: with a vault they are sealed in it, on a server
+they are sealed per account, and a window with NO vault keeps neither (ADR 0022 §6, as
+0.2.9 amends it).
+
+**It does not delete the files it already wrote**, and that is a decision rather than an
+oversight: deleting a file nobody asked Rite to delete is not something an upgrade should
+do quietly, and no installation of 0.2.8 is known to be in use. If one of yours is,
+**remove those two files by hand after upgrading** — Rite no longer reads them, so nothing
+is lost but the plaintext.
 
 ## Future Security Enhancements
 

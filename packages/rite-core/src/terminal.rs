@@ -873,6 +873,31 @@ fn connection_from_row(
     })
 }
 
+/// What an SSH channel runs once its PTY is allocated.
+///
+/// Until an agent needed otherwise, `connect` requested a PTY and then a shell,
+/// unconditionally. An adapter's resume command is a program, and the two paths that
+/// existed could not carry one: `run_remote_command` is exec with NO pty under a 15 s
+/// cap — an agent CLI without a tty renders as a dumb pipe and several refuse to start
+/// at all — and typing the command into a shell after a delay is what ADR 0022 §7.1
+/// forbids by name, because a shell discards queued input while it sets the tty up, so
+/// an early send is gone rather than late.
+///
+/// NOT THE SYMMETRY OF `LocalProgram::Argv`, and the difference is the protocol's, not a
+/// choice here. SSH "exec" (RFC 4254 §6.5) carries a command STRING, and sshd hands it
+/// to the account's login shell — there is no argv on this side and no way to ask for
+/// one. So a path with a space in it is syntax to that shell, and quoting is the
+/// adapter's job. Locally `Argv` reaches `execvp` untouched and quoting would be wrong;
+/// here it is required. Two sides, two rules, written down because the first person to
+/// assume they match will lose an afternoon to a project directory with a space in it.
+pub enum RemoteProgram {
+    /// The account's login shell. Every terminal pane.
+    Shell,
+    /// A command line, run by that login shell with a PTY attached, and the channel
+    /// left open for as long as it lives.
+    Exec(String),
+}
+
 impl SshSession {
     /// Create a new SSH session by connecting to a remote server
     #[allow(clippy::too_many_arguments)]
@@ -885,6 +910,7 @@ impl SshSession {
         trust: HostKeyTrust,              // Whose known_hosts, and whether to force-accept
         interactive: Option<SharedInteractive>, // Collects keyboard-interactive answers (2FA/PAM)
         jumps: Vec<(Connection, AuthMethod)>, // Jump-host chain (outermost/TCP first); empty = direct
+        program: RemoteProgram,               // A shell, or one command with a PTY (ADR 0022 §7.1)
     ) -> Result<Self> {
         let session_id = Uuid::new_v4().to_string();
         tracing::info!(
@@ -958,14 +984,28 @@ impl SshSession {
         // This ensures the listener is active when MOTD arrives
         let session_id_clone = session_id.clone();
         tokio::spawn(async move {
-            // Request shell (PTY was already allocated above)
-            tracing::info!("[terminal.rs] Requesting shell...");
-            if let Err(e) = channel.request_shell(true).await {
-                tracing::error!("[terminal.rs] Failed to request shell: {}", e);
-                events.terminal_error(&session_id_clone, &format!("Failed to start shell: {}", e));
+            // The PTY was allocated above; this decides what runs under it. Both
+            // requests are siblings on the same channel, and everything after this
+            // point — the event loop, resize, close — does not care which was sent.
+            let started = match &program {
+                RemoteProgram::Shell => {
+                    tracing::info!("[terminal.rs] Requesting shell...");
+                    channel.request_shell(true).await
+                }
+                RemoteProgram::Exec(command) => {
+                    tracing::info!("[terminal.rs] Requesting exec with a PTY");
+                    channel.exec(true, command.as_bytes()).await
+                }
+            };
+            if let Err(e) = started {
+                tracing::error!("[terminal.rs] Failed to start the remote program: {}", e);
+                events.terminal_error(
+                    &session_id_clone,
+                    &format!("Failed to start the remote program: {}", e),
+                );
                 return;
             }
-            tracing::info!("[terminal.rs] Shell started, buffering initial output");
+            tracing::info!("[terminal.rs] Started, buffering initial output");
 
             // Event loop: russh drives keepalive internally (see Config above), so
             // here we only pump commands to the channel and channel output back.
@@ -1186,6 +1226,10 @@ pub struct RemoteCommandOutput {
 /// probes are quick; a hang shouldn't wedge the UI).
 const REMOTE_COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
+/// And a local one-shot has the same, for the same reason (`LocalSession::run_captured`).
+/// Named here beside its twin so the two cannot drift apart unnoticed.
+pub const LOCAL_COMMAND_TIMEOUT: std::time::Duration = REMOTE_COMMAND_TIMEOUT;
+
 /// Establish an authenticated handle, run one command over an exec channel (no PTY),
 /// and collect its output. The handle + any jump tunnel are dropped on return.
 async fn exec_remote_command(
@@ -1228,7 +1272,17 @@ async fn exec_remote_command(
                     }
                 }
                 ChannelMsg::ExitStatus { exit_status: code } => exit_status = Some(code),
-                ChannelMsg::Eof | ChannelMsg::Close => break,
+                // CLOSE ENDS THIS, AND `EOF` DOES NOT.
+                //
+                // `Eof` means "no more data on this channel"; the exit status is a
+                // separate message and arrives before `Close`. Breaking on `Eof` was a
+                // race whose outcome depended on whether the command had PRINTED
+                // anything: with output the data and the status landed first, with none
+                // the `Eof` came first and the status was never read — so a command that
+                // succeeded reported `exit_status: None`, and a caller comparing against
+                // 0 called it a failure. `rm -f` prints nothing, which is how a removal
+                // that had actually happened came back as "Removal failed, exit null".
+                ChannelMsg::Close => break,
                 _ => {}
             }
         }
@@ -1308,6 +1362,8 @@ impl SessionManager {
     /// none (ADR 0024 §4). It fills the record's empty slot for this session and is never
     /// written back; `None` means the record holds what it needs, or holds nothing and the
     /// authentication will say so.
+    /// `program` is what the channel runs: a shell for a terminal pane, or one command
+    /// for an agent pane. It is not a convenience — see `RemoteProgram`.
     pub async fn create_session(
         &self,
         connection_id: String,
@@ -1315,6 +1371,7 @@ impl SessionManager {
         interactive: Option<SharedInteractive>,
         session_secret: Option<String>,
         owner: &str,
+        program: RemoteProgram,
     ) -> Result<SessionId> {
         tracing::info!(
             "[terminal.rs] create_session called for connection_id: {}",
@@ -1379,6 +1436,7 @@ impl SessionManager {
             HostKeyTrust::of(owner),
             interactive,
             jumps,
+            program,
         )
         .await?;
         let session_id = ssh_session.id.clone();
@@ -1444,6 +1502,34 @@ impl SessionManager {
     /// Create a new local terminal session
     ///
     /// Spawns a local shell (bash/zsh/fish) based on $SHELL env variable
+    /// A local PTY running ONE PROGRAM rather than a shell (ADR 0022 §7.1).
+    ///
+    /// The same session, registered the same way, so it closes, resizes and streams like
+    /// any other — only the thing on the far end of the tty differs. `start` is shared
+    /// with `create_local_session` for the reason that one checks it: a project directory
+    /// can be gone by the time someone resumes a conversation about it, and failing the
+    /// spawn would lose the session instead of its starting point.
+    pub async fn create_local_program(
+        &self,
+        events: SharedEvents,
+        argv: Vec<String>,
+        start: LocalStart<'_>,
+    ) -> Result<SessionId> {
+        let cwd = match start {
+            LocalStart::Inherit(from) => self.local_cwd(from).await,
+            LocalStart::In(dir) => Some(dir),
+            LocalStart::Wherever => None,
+        };
+        let local_session =
+            crate::local_terminal::LocalSession::run_program(events, argv, cwd).await?;
+        let session_id = local_session.id.clone();
+        self.sessions
+            .lock()
+            .await
+            .insert(session_id.clone(), Session::Local(local_session));
+        Ok(session_id)
+    }
+
     pub async fn create_local_session(
         &self,
         events: SharedEvents,
@@ -1812,6 +1898,7 @@ impl SessionManager {
     /// Create a quick SSH session (no unlock required, credentials not saved)
     ///
     /// For ad-hoc SSH connections that don't need to be saved to the vault
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_quick_ssh_session(
         &self,
         connection: Connection,
@@ -1820,6 +1907,7 @@ impl SessionManager {
         interactive: Option<SharedInteractive>,
         jumps: Vec<(Connection, AuthMethod)>,
         owner: &str,
+        program: RemoteProgram,
     ) -> Result<SessionId> {
         tracing::info!(
             "[terminal.rs] create_quick_ssh_session called for {}",
@@ -1859,6 +1947,7 @@ impl SessionManager {
             // Quick SSH proper passes an empty chain; the accounts path passes the
             // hops it decrypted client-side, since the server holds no record of them.
             jumps,
+            program,
         )
         .await?;
         let session_id = ssh_session.id.clone();

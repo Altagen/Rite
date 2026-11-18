@@ -185,6 +185,27 @@ try {
   assert.equal(typeof read.updatedAt, 'number', 'and says when it was written');
   ok('the blob round-trips untouched, with its write time');
 
+  step = 'marks-blob';
+  // THE SECOND USER DOCUMENT, AND THE REASON IT IS ASSERTED HERE. `user_marks` shipped as
+  // a migration file that was never added to the list in `db.rs`, so the table existed on
+  // disk and on no instance: this route answered `no such table` to every account for a
+  // release. Nothing caught it — the desktop bench runs without a vault, so marks went to
+  // the file support on every run, and the format checks have no server in them. One
+  // round-trip on a real accounts server is what that costs to prevent, and
+  // `e2e/migrations-registered-check.mjs` now holds the class rather than the instance.
+  assert.deepEqual(
+    await getJson('/api/user/marks', bob),
+    { blob: null, updatedAt: null },
+    'nothing named yet',
+  );
+  const names = 'v1.bWFya3MtaXY.bWFya3Mtc2VhbGVk';
+  assert.equal((await put('/api/user/marks', { blob: names }, bob)).status, 204, 'stored');
+  const marks = await getJson('/api/user/marks', bob);
+  assert.equal(marks.blob, names, 'returned verbatim — a label is not the server to read');
+  assert.equal(typeof marks.updatedAt, 'number', 'and says when it was written');
+  assert.equal((await getJson('/api/user/marks', admin)).blob, null, "not the admin's either");
+  ok('the marks blob round-trips, on a table that is actually there');
+
   step = 'per-account';
   // One row per user. Two accounts on one instance must not see each other's workspace,
   // and the admin is not an exception: they hold no key for it either.

@@ -112,20 +112,6 @@ check('every picker reads the shared module', () => {
   }
 });
 
-check('the mock carries the same machine palette', () => {
-  // The mock is a standalone file and cannot import, so it keeps a copy by necessity —
-  // two of them, which is why this palette had nine carriers and not seven. A copy that
-  // cannot be removed is a copy that has to be checked, or it drifts the way the eight in
-  // the components did. The mock was a colour behind when this was written.
-  const wanted = `[${MACHINE.map((c) => `'${c}'`).join(',')}]`;
-  for (const f of ['design/mock/desktop.html', 'design/mock/web.html']) {
-    assert.ok(
-      read(f).includes(`const COLORS=${wanted};`),
-      `${f} offers a different machine palette from the application's`,
-    );
-  }
-});
-
 check('the terminal theme stays in the other layer', () => {
   // Rite themes in two layers, and a swatch names an object in the UI rather than a colour
   // the shell prints with. The application layer must not reach into the terminal's.

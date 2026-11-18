@@ -16,8 +16,7 @@
  *
  * Matching and ranking are a pure function (`shortcuts/palette.ts`) held by
  * `e2e/palette-filter-check.mjs`, because ranking IS the behaviour of a palette.
- *
- * Mirrors `design/mock/desktop.html`, which got the palette first (ADR 0019).
+
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';

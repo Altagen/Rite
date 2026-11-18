@@ -695,6 +695,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/admin/collection-policy", patch(set_collection_policy))
         .route("/api/admin/healthcheck", patch(set_healthcheck))
         .route("/api/admin/dashboard-policy", patch(set_dashboard_policy))
+        .route("/api/admin/agent-policy", patch(set_agent_policy))
         .route("/api/admin/layouts-policy", patch(set_layouts_policy))
         .route("/api/healthcheck/probe", post(healthcheck_probe))
         // Teams / RBAC (product-model.md). Org-admin manages teams (/api/admin/*,
@@ -823,6 +824,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/settings/{key}", get(get_setting).put(set_setting))
         // Layouts (docs/LAYOUTS.md): what opens when you sit down.
         .route("/api/layouts", get(get_layouts).put(put_layouts))
+        .route("/api/marks", get(get_marks).put(put_marks))
         // Local-vault collections (ADR 0018): collections, their machines and their
         // boards, all decrypted in rite-core with the master key. Plaintext over
         // loopback to the local webview, which never receives credentials — the
@@ -875,6 +877,7 @@ pub fn build_router(state: ServerState) -> Router {
             "/api/user/layouts",
             get(get_user_layouts).put(set_user_layouts),
         )
+        .route("/api/user/marks", get(get_user_marks).put(set_user_marks))
         .route("/api/ssh-config/default-path", get(default_ssh_config_path))
         .route("/api/ssh-config/parse", post(parse_ssh_config))
         .route("/api/ssh/host-key/accept", post(accept_host_key))
@@ -894,6 +897,24 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/terminal/quick-ssh", post(quick_ssh))
         .route("/api/terminal/exec", post(machine_exec))
         .route("/api/terminal/exec-quick", post(machine_exec_quick))
+        // Agent discovery (ADR 0022 §4). The same transport as the two above and its own
+        // gate, because allowing `docker ps` is not the same decision as allowing a home
+        // directory to be enumerated.
+        .route("/api/agents/probe", post(agent_probe))
+        .route("/api/agents/probe-quick", post(agent_probe_quick))
+        .route("/api/agents/probe-local", post(agent_probe_local))
+        // The other half of the manager: a conversation REMOVED rather than listed. Same
+        // transport, same gate, a name of its own — a route called `probe` that runs `rm`
+        // is a lie to whoever reads a log or this router.
+        .route("/api/agents/manage", post(agent_manage))
+        .route("/api/agents/manage-quick", post(agent_manage_quick))
+        .route("/api/agents/manage-local", post(agent_manage_local))
+        // The instance vocabulary (ADR 0016's label scopes). READ by anyone who got this
+        // far, because every member needs the words; WRITTEN under `/api/admin`, which is
+        // where the role check lives — and which passes on a local vault, because there
+        // the caller past the loopback token IS the owner (ADR 0009, ADR 0018).
+        .route("/api/labels", get(get_labels))
+        .route("/api/admin/labels", put(set_labels))
         .route("/api/terminal/local", post(create_local))
         .route("/api/terminal/preconnect", post(run_preconnect))
         .route("/api/forwards", get(list_forwards).post(start_forward))
@@ -1210,6 +1231,19 @@ async fn served_locally(state: &ServerState, path: &str) -> bool {
     // `/api/admin/*` (see ADMIN_ROUTE_SETTINGS), which is where the console reads and
     // writes them, and a browser talks to its instance directly with no proxy in the path.
     if path == "/api/settings" || path.starts_with("/api/settings/") {
+        return true;
+    }
+    // Agent discovery is client-execute too (ADR 0011 §4): a desktop client probes from
+    // its own network position, with its own vault, so this never reaches the instance.
+    // Which is also why `agent_policy.clients` is policy the client obeys rather than
+    // something this server could enforce.
+    if path == "/api/agents/probe"
+        || path == "/api/agents/probe-quick"
+        || path == "/api/agents/probe-local"
+        || path == "/api/agents/manage"
+        || path == "/api/agents/manage-quick"
+        || path == "/api/agents/manage-local"
+    {
         return true;
     }
     let Some(rest) = path.strip_prefix("/api/terminal") else {
@@ -1629,6 +1663,7 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "healthcheck": healthcheck,
         "collectionPolicy": collection_policy(&state).await?,
         "dashboardPolicy": dashboard_policy(&state).await?,
+        "agentPolicy": agent_policy(&state).await?,
         "layoutsPolicy": layouts_policy(&state).await?,
         "hostKey": state.host_key.as_deref(),
         // ADR 0020: the keys this instance holds as code. The console renders these
@@ -1681,6 +1716,26 @@ async fn dashboard_probes_allowed(state: &ServerState) -> Result<bool, AppError>
         return Ok(true);
     }
     Ok(dashboard_policy(state)
+        .await?
+        .get("webui")
+        .and_then(Value::as_bool)
+        .unwrap_or(true))
+}
+
+/// Agent-manager policy (ADR 0022 §3): may discovery and reading what is in effect run,
+/// in a browser and in an attached client. Two booleans, no `minInterval` — discovery is
+/// explicit, so there is no periodic traffic to floor.
+async fn agent_policy(state: &ServerState) -> Result<Value, AppError> {
+    state.setting_policy("agent_policy").await
+}
+
+/// May a browser against this server run agent discovery right now? Same shape, and the
+/// same reason for living here, as `dashboard_probes_allowed`.
+async fn agent_discovery_allowed(state: &ServerState) -> Result<bool, AppError> {
+    if !state.accounts {
+        return Ok(true);
+    }
+    Ok(agent_policy(state)
         .await?
         .get("webui")
         .and_then(Value::as_bool)
@@ -2031,6 +2086,25 @@ async fn set_dashboard_policy(
     state
         .db
         .set_setting("dashboard_policy", &policy.to_string())
+        .await?;
+    nudge_mode_changed(&state);
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Admin: set the agent-manager policy (ADR 0022 §3).
+async fn set_agent_policy(
+    State(state): State<ServerState>,
+    Json(policy): Json<Value>,
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "agent_policy") {
+        return Ok(refusal);
+    }
+    if let Err(why) = config::validate("agent_policy", &policy) {
+        return Ok((StatusCode::BAD_REQUEST, format!("{why:#}")).into_response());
+    }
+    state
+        .db
+        .set_setting("agent_policy", &policy.to_string())
         .await?;
     nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
@@ -3835,6 +3909,7 @@ async fn delete_collection_item_ep(
 /// and any path at all would be allowed here — but each of these is a policy the whole
 /// instance obeys, so none of them is this route's to write.
 const ADMIN_ROUTE_SETTINGS: &[&str] = &[
+    "agent_policy",
     "allow_invitations",
     "allow_quick_ssh",
     "allow_secret_reveal",
@@ -3961,6 +4036,323 @@ fn layouts_path_from(custom: Option<std::ffi::OsString>) -> Option<std::path::Pa
 /// client reads that route instead — two supports, two honest contracts.
 fn layouts_file(accounts: bool) -> Option<std::path::PathBuf> {
     if accounts { None } else { layouts_path() }
+}
+
+/// Where this context keeps the marks document, which is decided by WHERE THE KEY IS.
+///
+/// TWO SUPPORTS, AND NO THIRD (ADR 0022 §6, amended in 0.2.9):
+///
+///   - a server account seals it client-side under the reader's own key, at
+///     `/api/user/marks`. This route has nothing to offer there.
+///   - A LOCAL VAULT IS A VAULT. The master key exists and this process is holding it, so
+///     the document is sealed with it and kept in the vault's own database.
+///   - and with no vault at all there is NO SUPPORT. Not a file in the clear, which is
+///     what this was for one unreleased cycle: a labelled conversation names a project and
+///     a customer, and the one place Rite wrote a person's own annotations unsealed was
+///     this file. The binary executes; the vault remembers. An agent can still be found,
+///     read and resumed with no vault — it cannot be enriched, because there is nowhere
+///     honest to put the enrichment.
+enum MarksSupport {
+    Account,
+    Vault([u8; 32]),
+    /// No vault here, so nothing may be written and nothing is read.
+    None,
+}
+
+async fn marks_support(state: &ServerState) -> MarksSupport {
+    if state.accounts {
+        return MarksSupport::Account;
+    }
+    // `get_master_key` answers only while the vault is unlocked, which is exactly the
+    // question being asked — so its error is the "no vault" branch and not a failure.
+    if let Ok(key) = state.auth.get_master_key().await {
+        return MarksSupport::Vault(*key.as_bytes());
+    }
+    MarksSupport::None
+}
+
+async fn get_marks(State(state): State<ServerState>) -> Result<Json<Value>, AppError> {
+    match marks_support(&state).await {
+        MarksSupport::Account => Ok(Json(json!({ "text": null, "path": null }))),
+        MarksSupport::Vault(key) => {
+            let text = rite_core::vault_documents::get(
+                state.db.pool(),
+                &key,
+                rite_core::vault_documents::MARKS,
+            )
+            .await?;
+            // Nothing written yet is the normal state of a fresh vault; `null` is reserved
+            // for "there is no support here", which the client reads as a refusal.
+            Ok(Json(
+                json!({ "text": text.unwrap_or_default(), "path": null }),
+            ))
+        }
+        // `null`, which the client reads as "there is no support here" — the same answer
+        // an account gets, for the same reason: this route is not where those marks live.
+        MarksSupport::None => Ok(Json(json!({ "text": null, "path": null }))),
+    }
+}
+
+async fn put_marks(
+    State(state): State<ServerState>,
+    Json(req): Json<ValueReq>,
+) -> Result<StatusCode, AppError> {
+    match marks_support(&state).await {
+        // A shared instance has no file to write and must not put this in a table it can
+        // read: there the marks ride as a sealed blob at `/api/user/marks`.
+        MarksSupport::Account => Ok(StatusCode::NOT_FOUND),
+        MarksSupport::Vault(key) => {
+            rite_core::vault_documents::set(
+                state.db.pool(),
+                &key,
+                rite_core::vault_documents::MARKS,
+                &req.value,
+            )
+            .await?;
+            Ok(StatusCode::NO_CONTENT)
+        }
+        // Nothing to seal with, so nothing is written. The screen does not offer the
+        // gesture at all; this is the answer to whoever calls the route anyway.
+        MarksSupport::None => Ok(StatusCode::NOT_FOUND),
+    }
+}
+
+/// How many words the instance vocabulary may declare.
+///
+/// Duplicated from `INSTANCE_LABELS_MAX` in `store/labelsFormat.ts` — across two languages
+/// there is nothing to import — and `e2e/label-caps-check.mjs` asserts the two agree, so
+/// neither side can move it alone. The same arrangement `NEW_TAB_CWD_HOME` has.
+const INSTANCE_LABELS_MAX: usize = 200;
+
+/// How long one word may be. See `LABEL_MAX` in `store/labelsFormat.ts`.
+const LABEL_MAX: usize = 24;
+
+/// How long a description may be. See `DESCRIPTION_MAX` in `store/labelsFormat.ts`.
+const DESCRIPTION_MAX: usize = 120;
+
+/// Where the instance vocabulary lives, which is decided by WHO READS IT.
+///
+/// THREE CASES, AND ONE REFUSAL:
+///
+///   - `Instance` — a server. Every member reads the list, so it is a plaintext row: a
+///     word everyone may read and use has nothing to hide from this process, and sealing
+///     it under a key they all hold would buy a key rotation path and no secrecy. What IS
+///     secret is which machine wears a word, and that stays in the collection's item.
+///   - `Vault` — a local vault, which is an instance of Rite with collections under it.
+///     The only reader is the owner, so it is sealed under the master key.
+///   - `Locked` — a vault EXISTS and is closed. Not a support but an answer: writing
+///     elsewhere would split one person's vocabulary across two places depending on
+///     whether they had unlocked. Refused, with a sentence that says which.
+///   - `None` — no vault has ever been created here. There is nowhere to put a word and
+///     nothing to put one ON: no collections, no machines, and a conversation cannot be
+///     enriched without a vault either (ADR 0022 §6, amended in 0.2.9). The screen does
+///     not draw the section at all, which is why this is told apart from `Locked`.
+///
+/// It was a FILE for one unreleased cycle, on the argument that a conversation could be
+/// labelled with no vault open. That argument died with the file the marks used: the
+/// binary executes, the vault remembers.
+enum LabelsSupport {
+    Instance,
+    Vault([u8; 32]),
+    Locked,
+    None,
+}
+
+async fn labels_support(state: &ServerState) -> LabelsSupport {
+    if state.accounts {
+        return LabelsSupport::Instance;
+    }
+    if let Ok(key) = state.auth.get_master_key().await {
+        return LabelsSupport::Vault(*key.as_bytes());
+    }
+    // A vault that exists and is shut is not a vault that is absent. Told apart here
+    // because the answers differ: one is a file, the other is "unlock first".
+    match state.auth.is_first_run().await {
+        Ok(true) => LabelsSupport::None,
+        _ => LabelsSupport::Locked,
+    }
+}
+
+/// Text as it is kept: squeezed to a line, trimmed, capped. See `cleanLabel`.
+fn squeeze(raw: &str, cap: usize) -> String {
+    raw.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(cap)
+        .collect()
+}
+
+/// One word, capped at `LABEL_MAX`.
+fn clean_label(raw: &str) -> String {
+    squeeze(raw, LABEL_MAX)
+}
+
+use rite_core::local_collections::{VocabEntry, VocabWord};
+
+/// A colour somebody chose for a word, when it is one.
+///
+/// SHAPE ONLY, and not membership of the palette. The nine swatches are the client's
+/// (`theme/swatches.ts`), and copying them here would be a tenth hand-written list of the
+/// same hexes — the thing `e2e/swatch-palette-check.mjs` exists to stop. A colour is not a
+/// boundary either: the worst a strange one does is look wrong to the person who typed it.
+fn accepted_color(raw: Option<String>) -> Option<String> {
+    let value = raw?;
+    let hex = value.strip_prefix('#')?;
+    (hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit())).then_some(value)
+}
+
+/// The vocabulary as it is stored: cleaned, de-duplicated case-insensitively, capped.
+///
+/// VALIDATED HERE AS WELL AS IN THE CLIENT, because the client is not the boundary: this
+/// route takes a list from whoever reached it, and an uncapped one would put a megabyte in
+/// a row every member reads on every open. The FIRST spelling is kept, like the client's.
+///
+/// A word with no colour goes back out as a BARE STRING, which is what keeps the shape
+/// additive: a list nobody has coloured is written exactly as it was before colours
+/// existed, and the browser writes the same two shapes (`formatVocab`).
+fn accepted_vocabulary(raw: Vec<VocabEntry>) -> Vec<VocabEntry> {
+    let mut out: Vec<VocabEntry> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for value in raw {
+        let (text, color, description) = match value {
+            VocabEntry::Word(w) => (w, None, None),
+            VocabEntry::Full(f) => (f.label, f.color, f.description),
+        };
+        let label = clean_label(&text);
+        if label.is_empty() || !seen.insert(label.to_lowercase()) {
+            continue;
+        }
+        let color = accepted_color(color);
+        let description = description
+            .map(|d| squeeze(&d, DESCRIPTION_MAX))
+            .filter(|d| !d.is_empty());
+        // A word with neither goes back out BARE, which is what keeps the shape additive:
+        // a list nobody has coloured or described is written exactly as it was before
+        // either existed, and the browser writes the same two shapes (`formatVocab`).
+        out.push(if color.is_none() && description.is_none() {
+            VocabEntry::Word(label)
+        } else {
+            VocabEntry::Full(VocabWord {
+                label,
+                color,
+                description,
+            })
+        });
+        if out.len() == INSTANCE_LABELS_MAX {
+            break;
+        }
+    }
+    out
+}
+
+#[derive(Deserialize)]
+struct LabelsReq {
+    labels: Vec<VocabEntry>,
+}
+
+impl LabelsSupport {
+    /// Which support answered, for a screen that has to say whether a write will land.
+    ///
+    /// SAID RATHER THAN GUESSED, because `locked` and `nothing declared yet` both read as
+    /// an empty list, and a Save button over the first one can only fail. That exact
+    /// mistake shipped once: the section was drawn in a window with no master password and
+    /// answered 409 to every press.
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Instance => "instance",
+            Self::Vault(_) => "vault",
+            Self::Locked => "locked",
+            Self::None => "none",
+        }
+    }
+}
+
+async fn get_labels(State(state): State<ServerState>) -> Result<Json<Value>, AppError> {
+    let support = labels_support(&state).await;
+    let name = support.name();
+    let labels = match support {
+        LabelsSupport::Instance => rite_core::vault_documents::instance::get(state.db.pool())
+            .await?
+            .and_then(|raw| serde_json::from_str::<Vec<VocabEntry>>(&raw).ok())
+            .unwrap_or_default(),
+        LabelsSupport::Vault(key) => {
+            let text = rite_core::vault_documents::get(
+                state.db.pool(),
+                &key,
+                rite_core::vault_documents::LABELS,
+            )
+            .await?;
+            text.and_then(|t| serde_json::from_str::<Vec<VocabEntry>>(&t).ok())
+                .unwrap_or_default()
+        }
+        // Nothing to read rather than an error, in both: behind a vault that is shut, or
+        // behind no vault at all. The support's name is what lets the screen tell those
+        // apart — one says "open it", the other is not drawn.
+        LabelsSupport::Locked | LabelsSupport::None => Vec::new(),
+    };
+    Ok(Json(json!({ "labels": labels, "support": name })))
+}
+
+async fn set_labels(
+    State(state): State<ServerState>,
+    Json(req): Json<LabelsReq>,
+) -> Result<Response, AppError> {
+    let labels = accepted_vocabulary(req.labels);
+    // `anyhow`, because `AppError` converts from that and not from serde's own error.
+    let text = serde_json::to_string(&labels).map_err(anyhow::Error::from)?;
+    match labels_support(&state).await {
+        LabelsSupport::Instance => {
+            rite_core::vault_documents::instance::set(state.db.pool(), &text).await?
+        }
+        LabelsSupport::Vault(key) => {
+            rite_core::vault_documents::set(
+                state.db.pool(),
+                &key,
+                rite_core::vault_documents::LABELS,
+                &text,
+            )
+            .await?
+        }
+        LabelsSupport::Locked => {
+            return Ok((
+                StatusCode::CONFLICT,
+                "this vault is locked: open it and the list is kept sealed with its key",
+            )
+                .into_response());
+        }
+        LabelsSupport::None => {
+            return Ok((
+                StatusCode::NOT_FOUND,
+                "a vault holds this list: there is none here to keep it in",
+            )
+                .into_response());
+        }
+    }
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// The account's copy, sealed. See `get_user_layouts` — the same arrangement, because a
+/// mark holds a machine name and a first message, which this server may not read.
+async fn get_user_marks(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+) -> Result<Json<Value>, AppError> {
+    let row = rite_core::marks_store::get(state.db.pool(), &user.id).await?;
+    let (blob, updated_at) = match row {
+        Some((blob, at)) => (Some(blob), Some(at)),
+        None => (None, None),
+    };
+    Ok(Json(json!({ "blob": blob, "updatedAt": updated_at })))
+}
+
+async fn set_user_marks(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Json(req): Json<VaultBlobReq>,
+) -> Result<StatusCode, AppError> {
+    rite_core::marks_store::set(state.db.pool(), &user.id, &req.blob).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// What a new installation sees instead of an empty box: the shape of the file, as
@@ -4819,6 +5211,18 @@ struct LocalReq {
     /// every terminal it opens starts in the image's `WORKDIR`, which is the home of the
     /// user the server runs as. Only a split passes `inherit_cwd_from` there.
     cwd: Option<String>,
+    /// One program and its arguments, in place of a shell (ADR 0022 §7.1).
+    ///
+    /// An agent pane on THIS machine: the resume line is the program the PTY runs, not
+    /// something typed into a shell afterwards, because a shell discards queued input
+    /// while it sets the tty up. It reaches `execvp` as written, so a space or a quote in
+    /// a project path is data rather than syntax.
+    ///
+    /// REFUSED IN ACCOUNTS MODE, like `cwd` above and for a stronger version of the same
+    /// reason: there the machine is the instance's, shared by every member, and this
+    /// would be any member naming a program for the server to run on it. A browser's
+    /// agents come from machines reached over SSH.
+    argv: Option<Vec<String>>,
 }
 
 /// The instance's shell, as something a PTY can spawn.
@@ -4980,10 +5384,23 @@ async fn create_local(
         (None, Some(dir)) => LocalStart::In(dir),
         (None, None) => LocalStart::Wherever,
     };
-    let id = state
-        .sessions
-        .create_local_session(state.events_sink(), shell.clone(), start)
-        .await?;
+    // A named program and a shell are two answers to one question, so one of them wins
+    // here rather than in each caller. `argv` is the agent's; everything else is a pane.
+    let argv = req.argv.filter(|a| !state.accounts && !a.is_empty());
+    let id = match argv {
+        Some(argv) => {
+            state
+                .sessions
+                .create_local_program(state.events_sink(), argv, start)
+                .await?
+        }
+        None => {
+            state
+                .sessions
+                .create_local_session(state.events_sink(), shell.clone(), start)
+                .await?
+        }
+    };
     state.record_session_owner(&id, as_user(&user));
     // The shell the session was given, so a client (and a test) can see that on a server
     // the answer is the instance's and not whatever was asked for.
@@ -5060,6 +5477,13 @@ struct StartQuickForwardReq {
     local_port: u16,
     remote_host: String,
     remote_port: u16,
+    /// Where this target came from. `connection_id` above is echoed, not checked — it is
+    /// the caller's own id for the row — so the proof is named separately and read by
+    /// `ad_hoc_target_allowed`.
+    #[serde(default)]
+    collection_id: Option<String>,
+    #[serde(default)]
+    item_id: Option<String>,
 }
 
 async fn start_quick_forward(
@@ -5067,6 +5491,17 @@ async fn start_quick_forward(
     user: Option<Extension<Arc<User>>>,
     Json(req): Json<StartQuickForwardReq>,
 ) -> Result<Response, AppError> {
+    // A forward is a standing tunnel from the server into the target, so it needs at
+    // least what a one-shot command needs.
+    if !ad_hoc_target_allowed(
+        &state,
+        as_user(&user),
+        req.collection_id.as_deref().zip(req.item_id.as_deref()),
+    )
+    .await?
+    {
+        return Ok(ad_hoc_refusal());
+    }
     let bind_host = forward_bind_host(state.accounts, req.bind_host.as_deref());
     let auth = match quick_auth(&state, req.auth_method) {
         Ok(auth) => auth,
@@ -5175,6 +5610,8 @@ struct LocalMachine {
     jump: Option<String>,
     forwards: Vec<rite_core::connection::PortForwardConfig>,
     hc: Option<bool>,
+    /// The labels this machine carries. Out of the sealed item, like everything above it.
+    labels: Vec<String>,
     /// Passive "last seen" (ADR 0017), from the side table — never inside the blob.
     last_used_at: Option<i64>,
     created_at: i64,
@@ -5216,6 +5653,7 @@ impl LocalMachine {
             jump: r.jump,
             forwards: r.forwards,
             hc: r.hc,
+            labels: r.labels,
             last_used_at,
             created_at,
             updated_at,
@@ -5242,6 +5680,12 @@ struct LocalCollectionReq {
     /// Collection-wide health-check opt-out. Absent ⇒ keep what is stored.
     #[serde(default)]
     hc: Option<Option<bool>>,
+    /// The declared vocabulary. Absent ⇒ keep what is stored, like `folders` and `hc`.
+    ///
+    /// A word may arrive bare or with its colour; both are accepted and the one with no
+    /// colour is written back bare — see `VocabEntry` and `accepted_vocabulary`.
+    #[serde(default)]
+    labels: Option<Vec<VocabEntry>>,
 }
 
 async fn local_list_collections(
@@ -5279,10 +5723,16 @@ async fn local_update_collection(
         state.db.pool(),
         &key,
         &id,
-        &req.name,
-        req.color.as_deref(),
-        req.folders,
-        req.hc,
+        rite_core::local_collections::CollectionPatch {
+            name: req.name,
+            color: req.color,
+            folders: req.folders,
+            hc: req.hc,
+            // Through the same cleaner as the instance list: one route must not accept
+            // what the other refuses, or a word declared in a collection could carry a
+            // colour the instance list would have dropped.
+            labels: req.labels.map(accepted_vocabulary),
+        },
     )
     .await?;
     Ok(Json(json!({ "ok": ok })))
@@ -5412,6 +5862,27 @@ struct ConnectSshReq {
     /// Used for this session and written nowhere.
     #[serde(default, rename = "sessionSecret")]
     session_secret: Option<String>,
+    /// One command to run under the PTY instead of the login shell — an adapter's
+    /// resume line, for an agent pane (ADR 0022 §7.1). Absent ⇒ a shell, which is
+    /// every terminal pane.
+    ///
+    /// NO NEW REACH. A terminal pane on this machine already runs whatever its reader
+    /// types, so naming the program up front grants nothing a shell did not. What it
+    /// buys is a channel that ends when the agent does, instead of a shell left behind.
+    #[serde(default)]
+    command: Option<String>,
+}
+
+/// What a connect request asked to run, as the core names it.
+///
+/// Blank is a shell, not an empty command: a client that sends `""` has asked for
+/// nothing in particular, and exec'ing an empty string would open a channel that
+/// closes at once — a pane that dies on arrival for a request that reads as ordinary.
+fn program_for(command: Option<&str>) -> rite_core::terminal::RemoteProgram {
+    match command.map(str::trim).filter(|c| !c.is_empty()) {
+        Some(c) => rite_core::terminal::RemoteProgram::Exec(c.to_string()),
+        None => rite_core::terminal::RemoteProgram::Shell,
+    }
 }
 
 async fn connect_ssh(
@@ -5444,6 +5915,7 @@ async fn connect_ssh(
                 state.interactive_provider(as_user(&user)),
                 jumps,
                 &host_key_owner(as_user(&user)),
+                program_for(req.command.as_deref()),
             )
             .await?;
         state.record_session_owner(&id, as_user(&user));
@@ -5457,6 +5929,7 @@ async fn connect_ssh(
             state.interactive_provider(as_user(&user)),
             req.session_secret.clone(),
             &host_key_owner(as_user(&user)),
+            program_for(req.command.as_deref()),
         )
         .await?;
     // Record "last used" in the local vault (ADR 0017 passive status). This is the local
@@ -5641,6 +6114,57 @@ struct QuickSshReq {
     collection_id: Option<String>,
     #[serde(default)]
     item_id: Option<String>,
+    /// See `ConnectSshReq::command`. This is the route a browser reaches a collection's
+    /// machine by (ADR 0011), so an agent pane in the web UI arrives here and not at
+    /// `/api/terminal/ssh`. The gate above is unchanged — a command is what to run on a
+    /// host this caller was already allowed to open a shell on, never a second way in.
+    #[serde(default)]
+    command: Option<String>,
+}
+
+/// May this caller have the server open an SSH connection to a target IT NAMED?
+///
+/// `allow_quick_ssh` is off unless an instance says otherwise, and the refusal has to let
+/// a saved connection through: zero-knowledge means the browser decrypts the target and
+/// hands it over (ADR 0011), so an ad-hoc target and a saved one arrive here as the same
+/// decrypted host. They are told apart by what the saved one can prove — the collection
+/// item it came from, checked against this caller's membership. Claiming an item is not a
+/// way in.
+///
+/// FOUR ROUTES TAKE A CALLER-NAMED HOST, and this check lived in one of them. `quick-ssh`
+/// enforced it; `/api/terminal/exec-quick`, `/api/forwards/quick` and then
+/// `/api/agents/probe-quick` did not. So an instance with the setting off still let any
+/// authenticated member open a connection from the server's own network position — the
+/// one thing the setting exists to refuse. A member supplies the credentials, so nothing
+/// is stolen; what is reached is whatever the server can reach and the member cannot.
+///
+/// It is one function and not a block per handler because the third and fourth routes are
+/// how it was lost: each was written from the shape of the second, which did not have it.
+async fn ad_hoc_target_allowed(
+    state: &ServerState,
+    user: Option<&User>,
+    origin: Option<(&str, &str)>,
+) -> Result<bool, AppError> {
+    if !state.accounts || state.setting_bool("allow_quick_ssh", false).await? {
+        return Ok(true);
+    }
+    let (Some((collection, item)), Some(caller)) = (origin, user) else {
+        return Ok(false);
+    };
+    Ok(coll_role(state, caller, collection).await?.is_some()
+        && coll::list_items(state.db.pool(), collection)
+            .await?
+            .iter()
+            .any(|i| i.id == item))
+}
+
+/// The refusal, worded after the setting an administrator has to go and find.
+fn ad_hoc_refusal() -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        "ad-hoc Quick SSH is disabled by this server",
+    )
+        .into_response()
 }
 
 async fn quick_ssh(
@@ -5648,32 +6172,14 @@ async fn quick_ssh(
     user: Option<Extension<Arc<User>>>,
     Json(req): Json<QuickSshReq>,
 ) -> Result<Response, AppError> {
-    // `allow_quick_ssh` is off unless an instance says otherwise, and it was enforced
-    // nowhere: the client hid its button while this route accepted any host and port from
-    // any account — an outbound SSH connection from the server into whatever it can reach.
-    //
-    // It was missed because this is also how a SAVED connection opens: zero-knowledge
-    // means the browser decrypts the target and hands it over (ADR 0011), so the two
-    // requests look alike. They are told apart now by what the saved one can prove — the
-    // collection item it came from, checked against this caller's membership.
-    if state.accounts && !state.setting_bool("allow_quick_ssh", false).await? {
-        let from_a_collection = match (&req.collection_id, &req.item_id, as_user(&user)) {
-            (Some(collection), Some(item), Some(caller)) => {
-                coll_role(&state, caller, collection).await?.is_some()
-                    && coll::list_items(state.db.pool(), collection)
-                        .await?
-                        .iter()
-                        .any(|i| &i.id == item)
-            }
-            _ => false,
-        };
-        if !from_a_collection {
-            return Ok((
-                StatusCode::FORBIDDEN,
-                "ad-hoc Quick SSH is disabled by this server",
-            )
-                .into_response());
-        }
+    if !ad_hoc_target_allowed(
+        &state,
+        as_user(&user),
+        req.collection_id.as_deref().zip(req.item_id.as_deref()),
+    )
+    .await?
+    {
+        return Ok(ad_hoc_refusal());
     }
     // Ad-hoc connection, never persisted (mirrors the desktop quick_ssh_connect).
     let auth = match quick_auth(&state, req.auth_method.clone()) {
@@ -5697,6 +6203,7 @@ async fn quick_ssh(
             state.interactive_provider(as_user(&user)),
             hops,
             &host_key_owner(as_user(&user)),
+            program_for(req.command.as_deref()),
         )
         .await?;
     state.record_session_owner(&id, as_user(&user));
@@ -5715,13 +6222,176 @@ struct MachineExecReq {
     session_secret: Option<String>,
 }
 
+/// Which feature's policy governs a one-shot exec, and therefore which refusal it gets.
+///
+/// Two gates and not one because an administrator must be able to allow container
+/// listings while refusing to let the product enumerate home directories, and the
+/// reverse (ADR 0022 §3).
+///
+/// NEITHER IS A CONFINEMENT, which is worth stating where the gates are rather than
+/// leaving to be assumed. Both routes take the command from the caller, and
+/// `POST /api/terminal/ssh` carries a command with no gate at all — deliberately, since
+/// running an agent is not governed: anyone who can open a terminal pane on a machine
+/// can type the same thing themselves, and a switch that hid the button would be relied
+/// on while changing nothing. What these two decide is whether RITE generates that
+/// traffic and reads those files on the user's behalf, which is a product decision an
+/// administrator can legitimately make. The place to actually stop a command is the
+/// host, or the machine the user is given.
+#[derive(Clone, Copy)]
+enum ExecGate {
+    Dashboard,
+    Agents,
+}
+
+impl ExecGate {
+    async fn allows(self, state: &ServerState) -> Result<bool, AppError> {
+        match self {
+            Self::Dashboard => dashboard_probes_allowed(state).await,
+            Self::Agents => agent_discovery_allowed(state).await,
+        }
+    }
+
+    /// The reason, not just the status, because a client that gets this is meant to say
+    /// which side refused rather than render an empty panel.
+    fn refusal(self) -> Response {
+        let why = match self {
+            Self::Dashboard => {
+                "the machine dashboard's container and service checks are turned off \
+                 for the web UI on this server"
+            }
+            Self::Agents => "agent discovery is turned off for the web UI on this server",
+        };
+        (StatusCode::FORBIDDEN, why).into_response()
+    }
+}
+
 async fn machine_exec(
     State(state): State<ServerState>,
     user: Option<Extension<Arc<User>>>,
     Json(req): Json<MachineExecReq>,
 ) -> Result<Response, AppError> {
-    if !dashboard_probes_allowed(&state).await? {
-        return Ok(probes_refused());
+    exec_saved(state, user, req, ExecGate::Dashboard).await
+}
+
+/// Agent discovery on a saved machine (ADR 0022 §4). Same request, same transport, its
+/// own gate — the command is `agentProbeCmd`'s, built on the client.
+async fn agent_probe(
+    State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
+    Json(req): Json<MachineExecReq>,
+) -> Result<Response, AppError> {
+    exec_saved(state, user, req, ExecGate::Agents).await
+}
+
+/// Removing one conversation on a saved machine.
+///
+/// SAME GATE AS LOOKING, AND NO SECOND SWITCH, which is the decision rather than the
+/// shortcut. `ExecGate`'s own note holds the rule: these gates decide whether RITE
+/// generates the traffic, never what the user may do on a host. Anyone who can open a
+/// terminal pane on that machine can type `rm` into it, so a delete adds no right — and a
+/// `manage` switch beside `discovery` would be read as a confinement while being none.
+///
+/// The command is the adapter's `remove`, built on the client (`agentRemoveCmd`), which
+/// is where the one check that matters lives: the path has to be named by the
+/// conversation's own id.
+async fn agent_manage(
+    State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
+    Json(req): Json<MachineExecReq>,
+) -> Result<Response, AppError> {
+    exec_saved(state, user, req, ExecGate::Agents).await
+}
+
+/// Agent discovery on THIS machine.
+///
+/// THE DESKTOP ALWAYS HAS A LOCAL MACHINE, whatever context it is in: a local vault, a
+/// window with no vault open at all, or a window signed into an instance. The CLIs are
+/// installed on the computer in front of the person, and reaching them is not a question
+/// about any vault — which is why this route touches neither. `served_locally` keeps it
+/// here even in a server context, so a desktop client probes its own home directory and
+/// never the instance's.
+///
+/// A DEPLOYED INSTANCE HAS NO LOCAL MACHINE TO OFFER, and that is the whole refusal
+/// below. Its "local" is the container the server runs in, shared by every member; a
+/// browser's agents therefore only ever come from machines reached over SSH. Running
+/// this there would hand any member a listing of the host's own home directory, and then
+/// a shell on it — which is the one thing a multi-user instance must not do with a route
+/// that asks for no credential.
+///
+/// The discovery gate still applies: `agent_policy` is about whether RITE generates this
+/// traffic and reads those files on a user's behalf, and a desktop client obeys it too.
+async fn agent_probe_local(
+    State(state): State<ServerState>,
+    Json(req): Json<LocalProbeReq>,
+) -> Result<Response, AppError> {
+    agent_local_exec(state, req).await
+}
+
+/// Removing one conversation on THIS machine. See `agent_manage` for the gate and
+/// `agent_probe_local` for why a deployed instance has no local machine at all.
+async fn agent_manage_local(
+    State(state): State<ServerState>,
+    Json(req): Json<LocalProbeReq>,
+) -> Result<Response, AppError> {
+    agent_local_exec(state, req).await
+}
+
+/// One agent command on this machine, gated and captured.
+///
+/// One body for both local routes, so the accounts refusal and the discovery gate cannot
+/// be present on one and forgotten on the other — which is the whole reason this is a
+/// function and not a copy.
+async fn agent_local_exec(state: ServerState, req: LocalProbeReq) -> Result<Response, AppError> {
+    if state.accounts {
+        return Ok((
+            StatusCode::GONE,
+            "a deployed instance has no local machine to look on: its host is not a \
+             member's computer (ADR 0022)",
+        )
+            .into_response());
+    }
+    if !ExecGate::Agents.allows(&state).await? {
+        return Ok(ExecGate::Agents.refusal());
+    }
+    let out = rite_core::local_terminal::LocalSession::run_captured(req.command).await?;
+    Ok(Json(json!({
+        "stdout": out.stdout,
+        "stderr": out.stderr,
+        "exitStatus": out.exit_status,
+    }))
+    .into_response())
+}
+
+#[derive(Deserialize)]
+struct LocalProbeReq {
+    command: String,
+}
+
+async fn exec_saved(
+    state: ServerState,
+    user: Option<Extension<Arc<User>>>,
+    req: MachineExecReq,
+    gate: ExecGate,
+) -> Result<Response, AppError> {
+    if !gate.allows(&state).await? {
+        return Ok(gate.refusal());
+    }
+    // A deployed instance has no vault to resolve an id in: a member's machines live in
+    // collections, encrypted, and this instance is refused a vault key even to an
+    // administrator (ADR 0011, ADR 0018). So this answered `Application is locked` — an
+    // error, which reads as a fault rather than as an answer, and which would become a
+    // lookup the day an instance did hold a vault. The connection table has no owner
+    // column, so that lookup would be any member's id against every member's row.
+    //
+    // Said plainly instead, and before the id is touched. A browser reaches a collection
+    // machine through `exec-quick`; a desktop client serves this route itself.
+    if state.accounts {
+        return Ok((
+            StatusCode::GONE,
+            "a deployed instance resolves no connection ids: send the decrypted target \
+             to /api/terminal/exec-quick (ADR 0011)",
+        )
+            .into_response());
     }
     let out = state
         .sessions
@@ -5734,16 +6404,6 @@ async fn machine_exec(
         )
         .await?;
     Ok(Json(out).into_response())
-}
-
-/// One wording for both exec routes: the reason, not just the status, because a client
-/// that gets this is meant to say which side refused rather than render an empty panel.
-fn probes_refused() -> Response {
-    (
-        StatusCode::FORBIDDEN,
-        "the machine dashboard's container and service checks are turned off for the web UI on this server",
-    )
-        .into_response()
 }
 
 /// Run a one-shot command on an ad-hoc target (accounts client-execute) and return
@@ -5759,6 +6419,13 @@ struct MachineExecQuickReq {
     /// Resolved jump chain, outermost-first. Absent/empty ⇒ direct.
     #[serde(default)]
     jumps: Vec<QuickHop>,
+    /// Where this target came from, when it came from a collection. See `QuickSshReq`:
+    /// the same proof, because this route opens the same connection to run one command
+    /// in place of a shell.
+    #[serde(default)]
+    collection_id: Option<String>,
+    #[serde(default)]
+    item_id: Option<String>,
 }
 
 async fn machine_exec_quick(
@@ -5766,8 +6433,46 @@ async fn machine_exec_quick(
     user: Option<Extension<Arc<User>>>,
     Json(req): Json<MachineExecQuickReq>,
 ) -> Result<Response, AppError> {
-    if !dashboard_probes_allowed(&state).await? {
-        return Ok(probes_refused());
+    exec_quick(state, user, req, ExecGate::Dashboard).await
+}
+
+/// Agent discovery on an ad-hoc target: the browser already decrypted it (ADR 0011).
+async fn agent_probe_quick(
+    State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
+    Json(req): Json<MachineExecQuickReq>,
+) -> Result<Response, AppError> {
+    exec_quick(state, user, req, ExecGate::Agents).await
+}
+
+/// Removing one conversation on an ad-hoc target. See `agent_manage`.
+async fn agent_manage_quick(
+    State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
+    Json(req): Json<MachineExecQuickReq>,
+) -> Result<Response, AppError> {
+    exec_quick(state, user, req, ExecGate::Agents).await
+}
+
+async fn exec_quick(
+    state: ServerState,
+    user: Option<Extension<Arc<User>>>,
+    req: MachineExecQuickReq,
+    gate: ExecGate,
+) -> Result<Response, AppError> {
+    if !gate.allows(&state).await? {
+        return Ok(gate.refusal());
+    }
+    // The feature switch above is a product decision; this one is the boundary. A command
+    // on a host the caller named is the same outbound connection `quick-ssh` makes.
+    if !ad_hoc_target_allowed(
+        &state,
+        as_user(&user),
+        req.collection_id.as_deref().zip(req.item_id.as_deref()),
+    )
+    .await?
+    {
+        return Ok(ad_hoc_refusal());
     }
     let auth = match quick_auth(&state, req.auth_method) {
         Ok(auth) => auth,
@@ -6064,6 +6769,31 @@ mod tests {
     use axum::http::Request;
     use tower::ServiceExt;
 
+    /// What a connect request asked to run.
+    ///
+    /// The blank cases are the whole point of the function and the reason it is not an
+    /// inline `match` at three call sites: a JSON body built by a client that always
+    /// sends the field reaches here as `Some("")`, and exec'ing an empty string opens a
+    /// channel that closes at once — a pane that dies on arrival for a request that
+    /// looked ordinary. Every blank shape answers "a shell".
+    #[test]
+    fn a_blank_command_is_a_shell_and_a_real_one_is_not() {
+        use rite_core::terminal::RemoteProgram;
+        let shell = |c: Option<&str>| matches!(program_for(c), RemoteProgram::Shell);
+
+        assert!(shell(None), "no command at all is a terminal pane");
+        assert!(shell(Some("")), "a client that always sends the field");
+        assert!(shell(Some("   ")), "and one that sends whitespace");
+
+        match program_for(Some("  claude --resume 3f1c9e7a  ")) {
+            RemoteProgram::Exec(command) => assert_eq!(
+                command, "claude --resume 3f1c9e7a",
+                "the command is trimmed, because the shell on the far side would not be"
+            ),
+            RemoteProgram::Shell => panic!("a named command must not open a shell"),
+        }
+    }
+
     #[test]
     fn register_limiter_caps_per_window_per_key() {
         let rl = RegisterLimiter::default();
@@ -6294,6 +7024,14 @@ mod tests {
         assert!(local("/api/terminal/quick-ssh").await);
         assert!(local("/api/terminal/exec").await);
         assert!(local("/api/terminal/exec-quick").await);
+        // ADR 0022 §4 rides the same rule: a desktop client discovers agents from its
+        // own network position, with its own vault. Which is why `agent_policy.clients`
+        // is policy the client obeys and not something a remote could enforce.
+        assert!(local("/api/agents/probe").await);
+        assert!(local("/api/agents/probe-quick").await);
+        assert!(local("/api/agents/manage").await);
+        assert!(local("/api/agents/manage-quick").await);
+        assert!(local("/api/agents/manage-local").await);
 
         // Proxied: the session list is the instance's roster, not ours.
         assert!(
@@ -6442,7 +7180,99 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
     }
 
+    /// WITH NO VAULT, NOTHING IS KEPT — the other half of ADR 0022 §6 as 0.2.9 amends it.
+    ///
+    /// A name, a colour and a label are what Rite remembers about somebody else's
+    /// conversation, and they are sealed: under a vault's master key here, under the
+    /// reader's own on an account. With no vault there is nothing to seal with, and for
+    /// one unreleased cycle the answer was a JSON file in the clear — the only place Rite
+    /// wrote a person's own annotations unsealed. The binary executes; the vault
+    /// remembers.
+    ///
+    /// AT THE ROUTE AND NOT ONLY ON THE SCREEN. The manager draws no gesture that would
+    /// reach these, which is the half a reader sees; this is the half that holds when
+    /// something else calls them. Both are needed, and the screen's half is held by
+    /// `agent-manager.spec.ts`.
+    ///
+    /// A read answers `null` rather than failing: "there is no support here" is an
+    /// answer, and the client tells it from `""` — a fresh vault with nothing named yet.
     #[tokio::test]
+    async fn a_window_with_no_vault_keeps_no_marks_and_no_words() {
+        let app = build_router(test_state().await);
+
+        let ask = |app: axum::Router, method: Method, path: &'static str, body: &'static str| async move {
+            app.oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(path)
+                    .header("host", "127.0.0.1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+        };
+
+        let read = ask(app.clone(), Method::GET, "/api/marks", "").await;
+        assert_eq!(
+            read.status(),
+            StatusCode::OK,
+            "a read is answered, not refused"
+        );
+        let body = axum::body::to_bytes(read.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            payload["text"],
+            Value::Null,
+            "null is 'no support here'; an empty document would be \"\""
+        );
+        assert_eq!(
+            payload["path"],
+            Value::Null,
+            "and above all not a file on the device"
+        );
+
+        let wrote = ask(
+            app.clone(),
+            Method::PUT,
+            "/api/marks",
+            r#"{"value":"{\"version\":1,\"marks\":[]}"}"#,
+        )
+        .await;
+        assert_eq!(
+            wrote.status(),
+            StatusCode::NOT_FOUND,
+            "a mark has nowhere to go, so the route says so instead of writing a file"
+        );
+
+        // The vocabulary is the same decision: a word is declared in a vault, and there
+        // is none here to declare it in.
+        let words = ask(app.clone(), Method::GET, "/api/labels", "").await;
+        assert_eq!(words.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(words.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            payload["support"], "none",
+            "told apart from `locked`, which is a vault that EXISTS and is shut: one says \
+             open it, the other is a section the screen does not draw"
+        );
+        assert_eq!(payload["labels"], serde_json::json!([]));
+
+        let declared = ask(
+            app.clone(),
+            Method::PUT,
+            "/api/admin/labels",
+            r#"{"labels":["prod"]}"#,
+        )
+        .await;
+        assert_eq!(declared.status(), StatusCode::NOT_FOUND);
+    }
+
     /// The handshake ADR 0008 rests on, pinned to exact values.
     ///
     /// This test asserted only that the route answered 200 — under a name that claims it
@@ -6451,6 +7281,7 @@ mod tests {
     /// purpose: `version` is the release, `apiVersion` moves ONLY on a breaking change
     /// (0.2.4 added routes and fields, which are additive, so it does not move), and
     /// `minClient` is the oldest client this server still talks to.
+    #[tokio::test]
     async fn capabilities_reports_version() {
         let app = build_router(test_state().await);
         let res = app
@@ -6468,7 +7299,7 @@ mod tests {
             .unwrap();
         let payload: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(
-            payload["version"], "0.2.8",
+            payload["version"], "0.2.9",
             "the release this server reports (Cargo.toml's workspace version)"
         );
         assert_eq!(

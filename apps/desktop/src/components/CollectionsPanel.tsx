@@ -1,5 +1,5 @@
 /**
- * The user's collection manager (ADR 0016) — master-detail (design/mock/collections.html).
+ * The user's collection manager (ADR 0016) — master-detail.
  * A flush left rail lists every collection you hold a key for (including empty ones the
  * machine-driven sidebar can't show); the right pane edits the selected one: colour,
  * rename, and — for shared collections you own — members/roles/sharing and delete.

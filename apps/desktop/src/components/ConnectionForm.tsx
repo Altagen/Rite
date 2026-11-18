@@ -15,7 +15,9 @@ import {
 } from '../store/connectionsStore';
 import type { QuickSSHConnectionInfo } from './QuickSSHModal';
 import { AuthSection } from './AuthSection';
+import { LabelField, type LabelOffer } from './Labels';
 import { MACHINE_SWATCHES } from '../theme/swatches';
+import { SwatchGrid } from './SwatchGrid';
 import {
   makeAuthState,
   storedAuthType,
@@ -39,13 +41,32 @@ interface ConnectionFormProps {
   // ADR 0016: shared collections the caller may save into (owner/editor). When
   // present (accounts context), the form offers a "save to collection" target.
   collectionTargets?: { id: string; name: string }[];
+  /**
+   * Open the vocabulary of the collection this machine is being saved into.
+   *
+   * The field offers declared words and declares none, so this is the answer to "where
+   * do I add one". A DIALOG OVER THIS ONE rather than a page: everything typed here is
+   * still here when it closes, which is the same reason this form refuses to close on a
+   * stray backdrop click.
+   */
+  onDeclareLabels?: (collectionId: string) => void;
+  /** True while the caller has a dialog open above this form: Escape belongs to that one. */
+  escapeDisabled?: boolean;
   // Preselect this collection as the save target (e.g. opening the form from a
   // collection view). Only applies when creating.
   defaultCollectionId?: string | null;
   // Preselect this sub-folder path (e.g. opening the form from a folder's ＋).
   defaultFolder?: string | null;
+  /**
+   * Every label on offer, with its scope (`components/Labels.tsx`).
+   *
+   * Passed in rather than read here, because what is on offer depends on which collection
+   * is being saved into and on the instance's own list — neither of which is this form's
+   * to know. Absent ⇒ the field still works and offers nothing, which is the state of a
+   * vault where nobody has labelled anything yet.
+   */
+  labelOffers?: LabelOffer[];
 }
-
 
 export function ConnectionForm({
   connection,
@@ -57,8 +78,11 @@ export function ConnectionForm({
   reveal,
   jumpCandidates,
   collectionTargets,
+  onDeclareLabels,
+  escapeDisabled,
   defaultCollectionId,
   defaultFolder,
+  labelOffers,
 }: ConnectionFormProps) {
   const { t } = useTranslation();
 
@@ -108,6 +132,7 @@ export function ConnectionForm({
   // Health-check opt-out (ADR 0017): false ⇒ never actively probe this machine.
   const [hcOptOut, setHcOptOut] = useState(connection?.hc === false);
   const [notes, setNotes] = useState(connection?.notes || '');
+  const [labels, setLabels] = useState(connection?.labels ?? []);
   const [preconnect, setPreconnect] = useState(connection?.preconnect || '');
   const [jump, setJump] = useState(connection?.jump || '');
   const [sshKeepAliveOverride, setSshKeepAliveOverride] = useState<string | null>(
@@ -128,7 +153,16 @@ export function ConnectionForm({
   const protocolDropdownRef = useRef<HTMLDivElement>(null);
 
   // Esc is the keyboard way out, now that a click outside is not one (see the backdrop).
+  //
+  // AND IT STANDS DOWN WHILE SOMETHING IS OPEN ABOVE IT. The listener is on `document`, so
+  // it fires for a key pressed anywhere — including inside the vocabulary dialog this form
+  // opens through `onDeclareLabels`, which is rendered by the WORKSPACE and layered over
+  // it. Escape there read as "close the machine form": the dialog stayed (its state is not
+  // here) and a half-filled form was unmounted with everything typed into it. That is the
+  // exact loss the declare link exists to prevent, so the owner of the top layer says when
+  // this one may listen.
   useEffect(() => {
+    if (escapeDisabled) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -137,7 +171,7 @@ export function ConnectionForm({
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, escapeDisabled]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -289,6 +323,9 @@ export function ConnectionForm({
           ...(color && { color }),
           ...(icon && { icon }),
           ...(notes && { notes }),
+          // Always sent, because a list replaces rather than merges — so an edit that
+          // takes the last label off has to say so.
+          labels,
           sshKeepAliveOverride: sshKeepAliveOverride,
           sshKeepAliveInterval: sshKeepAliveInterval,
           preconnect: preconnect.trim() || null, // always send so clearing it works
@@ -351,6 +388,7 @@ export function ConnectionForm({
           ...(color && { color }),
           ...(icon && { icon }),
           ...(notes && { notes }),
+          ...(labels.length !== 0 && { labels }),
           sshKeepAliveOverride: sshKeepAliveOverride,
           sshKeepAliveInterval: sshKeepAliveInterval,
           ...(preconnect.trim() && { preconnect: preconnect.trim() }),
@@ -527,6 +565,38 @@ export function ConnectionForm({
             {errors.username && <p className="mt-1 text-sm text-red-500">{errors.username}</p>}
           </div>
 
+          {/* LABELS, HERE AND NOT UNDER "ADVANCED OPTIONS", which is where they were.
+              A label is how a machine is FOUND again — the same job as its name and its
+              host, which are the two fields above. It is also searchable: the library's
+              search reads it and the collection has a `Label ▾` filter on it, so a field
+              that feeds the search sat behind a fold called "advanced", under Folder and
+              Notes. The cost showed up as a question — "how do I add a label?" — and then
+              again when the first test for this field timed out with the form open and no
+              labels anywhere on it.
+
+              Folder and Notes stay advanced: one is a personal arrangement, the other is
+              prose, and neither is searched. */}
+          <div>
+            <LabelField
+              labels={labels}
+              onChange={setLabels}
+              vocabulary={labelOffers ?? []}
+              inputId="machine-labels-input"
+              testPrefix="machine-labels"
+              // GATED ON THE NAME, not on the id: a preselected collection that is not in
+              // `collectionTargets` — read-only, or not fetched yet — used to render
+              // "Declare a word for …" with a blank where the name goes, and still open it.
+              declare={(() => {
+                const target = collectionTargetId
+                  ? collectionTargets?.find((c) => c.id === collectionTargetId)
+                  : undefined;
+                return onDeclareLabels && target
+                  ? { where: target.name, open: () => onDeclareLabels(target.id) }
+                  : undefined;
+              })()}
+            />
+          </div>
+
           {/* Authentication — shared with Quick SSH (password / key file / agent) */}
           <AuthSection
             value={auth}
@@ -587,18 +657,13 @@ export function ConnectionForm({
           {/* Colour */}
           <div>
             <label className="mb-1 block text-sm font-medium">{t('connections.color')}</label>
-            <div className="m-swatches">
-              {MACHINE_SWATCHES.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  className={`m-sw ${color === c ? 'sel' : ''}`}
-                  style={{ backgroundColor: c }}
-                  aria-label={t('dlg.colourAria', { hex: c })}
-                />
-              ))}
-            </div>
+            <SwatchGrid
+              palette={MACHINE_SWATCHES}
+              value={color}
+              onPick={setColor}
+              testPrefix="machine-colour"
+              size="large"
+            />
           </div>
 
           {/* Health-check (ADR 0017): a machine can opt out of active probing. */}

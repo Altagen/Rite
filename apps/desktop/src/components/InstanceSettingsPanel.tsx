@@ -4,13 +4,16 @@
  * server-side as a setting and surfaced publicly on the login screen + header.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { LabelManager, type LabelTarget } from './LabelManager';
+import { useInstanceLabels } from '../store/instanceLabels';
 import { useTranslation } from '../i18n/i18n';
 import {
   Backend,
   type DashboardPolicy,
   type HealthcheckPolicy,
   type LayoutsPolicy,
+  type AgentPolicy,
 } from '../utils/backend';
 import { Switch } from './Switch';
 
@@ -26,6 +29,8 @@ const DEFAULT_HC: HealthcheckPolicy = {
 const DEFAULT_DASH: DashboardPolicy = { webui: true, clients: true, minInterval: 30 };
 /** ADR 0027: both true, so an instance that says nothing has the feature on. */
 const DEFAULT_LAYOUTS: LayoutsPolicy = { webui: true, clients: true };
+/** ADR 0022 §3: both on, for the same reason. No interval — discovery is explicit. */
+const DEFAULT_AGENTS: AgentPolicy = { webui: true, clients: true };
 const HC_METHODS: { id: string; label: string }[] = [
   { id: 'tcp-connect', label: 'TCP-connect' },
   { id: 'icmp', label: 'ICMP' },
@@ -48,6 +53,28 @@ function ManagedBy({ origin }: { origin: string }) {
 
 export function InstanceSettingsPanel() {
   const { t } = useTranslation();
+  // The same store the local section uses: the route picks the support, so neither
+  // surface learns whether the list is a plaintext row or a sealed document.
+  const instanceWords = useInstanceLabels((st) => st.words);
+  const instanceLoaded = useInstanceLabels((st) => st.loaded);
+  const loadInstanceWords = useInstanceLabels((st) => st.load);
+  const saveInstanceWords = useInstanceLabels((st) => st.save);
+  useEffect(() => {
+    if (!instanceLoaded) void loadInstanceWords();
+  }, [instanceLoaded, loadInstanceWords]);
+  // ONE TARGET, so the manager draws no scope selector: a collection's own words are
+  // managed on the collection, by its members, and are none of this panel's business.
+  const labelTargets: LabelTarget[] = useMemo(
+    () => [
+      {
+        id: '@instance',
+        name: t('labels.scopeInstance'),
+        words: instanceWords,
+        save: saveInstanceWords,
+      },
+    ],
+    [instanceWords, saveInstanceWords, t],
+  );
   const [name, setName] = useState('');
   const [saved, setSaved] = useState<string | null>(null);
   const [persistence, setPersistence] = useState(true);
@@ -71,6 +98,7 @@ export function InstanceSettingsPanel() {
   const [hc, setHc] = useState<HealthcheckPolicy>(DEFAULT_HC);
   const [dash, setDash] = useState<DashboardPolicy>(DEFAULT_DASH);
   const [layouts, setLayouts] = useState<LayoutsPolicy>(DEFAULT_LAYOUTS);
+  const [agents, setAgents] = useState<AgentPolicy>(DEFAULT_AGENTS);
   // ADR 0020: keys this instance holds as code, mapped to where each was declared.
   const [managed, setManaged] = useState<Record<string, string>>({});
   const [userInput, setUserInput] = useState('');
@@ -98,6 +126,7 @@ export function InstanceSettingsPanel() {
       setHc(mode.healthcheck ?? DEFAULT_HC);
       setDash(mode.dashboardPolicy ?? DEFAULT_DASH);
       setLayouts(mode.layoutsPolicy ?? DEFAULT_LAYOUTS);
+      setAgents(mode.agentPolicy ?? DEFAULT_AGENTS);
       setManaged(mode.managed ?? {});
     } catch {
       setError(t('admin.inst.errLoad'));
@@ -137,6 +166,17 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setLayoutsPolicy(next);
     } catch (err) {
       setLayouts(prev);
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
+    }
+  };
+
+  const saveAgents = async (next: AgentPolicy) => {
+    const prev = agents;
+    setAgents(next);
+    try {
+      await Backend.Admin.setAgentPolicy(next);
+    } catch (err) {
+      setAgents(prev);
       setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
@@ -802,6 +842,63 @@ export function InstanceSettingsPanel() {
             onChange={() => saveLayouts({ ...layouts, clients: !layouts.clients })}
             testId="instance-layouts-clients"
           />
+        </div>
+
+        {/* Agent manager (ADR 0022 §3). Governs LOOKING — discovery and reading what is
+            in effect — and not running: a server cannot stop a shell the user already
+            has, so there is no switch here pretending to. */}
+        <div className="border-t border-border p-4">
+          <div className="font-medium">{t('admin.inst.agents')}</div>
+          <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.agentsDesc')}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{t('admin.inst.agentsStrength')}</p>
+          {managed.agent_policy && <ManagedBy origin={managed.agent_policy} />}
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-t border-border p-4">
+          <div>
+            <div className="font-medium">{t('admin.inst.agentsWebui')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.agentsWebuiDesc')}</p>
+          </div>
+          <Switch
+            checked={agents.webui}
+            label={t('admin.inst.agentsWebuiLabel')}
+            disabled={!!managed.agent_policy}
+            onChange={() => saveAgents({ ...agents, webui: !agents.webui })}
+            testId="instance-agents-webui"
+          />
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-t border-border p-4">
+          <div>
+            <div className="font-medium">{t('admin.inst.agentsClients')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t('admin.inst.agentsClientsDesc')}
+            </p>
+          </div>
+          <Switch
+            checked={agents.clients}
+            label={t('admin.inst.agentsClientsLabel')}
+            disabled={!!managed.agent_policy}
+            onChange={() => saveAgents({ ...agents, clients: !agents.clients })}
+            testId="instance-agents-clients"
+          />
+        </div>
+
+        {/* THE WORDS EVERY MEMBER CAN USE, and the reason they are HERE rather than in a
+            member's own settings: on a server this list is the instance's, so it is
+            administered where the instance is. On a local vault the same list is the
+            person's own and sits with their settings — the surface follows the owner, which
+            is what ADR 0025 does for everything else on this panel.
+
+            NOT AN INSTANCE SETTING in the `settings` sense, though: it has its own table and
+            its own route, because nothing in this list changes how a client behaves and
+            `e2e/mode-nudge-check.mjs` refuses a settings write that does not nudge. */}
+        <div className="border-t border-border p-4">
+          <div className="font-medium">{t('labels.field')}</div>
+          <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.labelsDesc')}</p>
+          <div className="mt-3">
+            <LabelManager targets={labelTargets} />
+          </div>
         </div>
       </div>
     </div>

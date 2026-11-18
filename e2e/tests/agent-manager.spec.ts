@@ -1,0 +1,287 @@
+import { test, expect } from '@playwright/test';
+import { ensureCollection, createMachine } from './support/localVault';
+import { lockVault, unlockVault } from './support/headerBar';
+
+/**
+ * The agent manager, in a local vault (ADR 0022 §4).
+ *
+ * WHAT A BROWSER TEST CAN HONESTLY HOLD HERE. Discovery runs one command over SSH, and
+ * the harness has no machine with an agent CLI on it, so what is asserted is everything
+ * up to and after that round trip: that the manager is a VIEW reached from the toolbar,
+ * that it says which machine it is looking at and that it has not looked yet, that
+ * picking a machine is what unlocks the ask, and that the CLIs panel names the six
+ * adapters with the commands they will run.
+ *
+ * The parse side is held as a table instead, in `e2e/agent-adapters-check.mjs`, against
+ * the real listings measured on an installed binary — a browser test per vendor layout
+ * would be minutes of SSH for decisions that are a pure function of a path.
+ */
+
+test.beforeEach(async ({ request }) => {
+  await request.put('/api/settings/host_key_verification_mode', { data: { value: 'accept' } });
+});
+
+test('the manager is a view, names the machine, and says it has not looked yet', async ({
+  page,
+  request,
+}) => {
+  const collection = await ensureCollection(request, 'e2e-agents');
+  await createMachine(request, collection, { name: 'e2e-agent-host' });
+
+  await page.goto('/');
+  await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
+
+  // A view, not a pane: the toolbar OPENS it, a closable chip then appears in the tab
+  // strip, and the view covers the workspace. The chip is not permanent — this is
+  // somewhere people go, and the mock keeps it that way for the same reason.
+  await expect(page.getByTestId('nav-agents')).toHaveCount(0);
+  await page.getByTestId('toolbar-agents').click();
+  await expect(page.getByTestId('agent-manager')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('nav-agents')).toBeVisible();
+
+  // Nothing is asked of any machine until one is chosen. A manager that probed on open
+  // would spend an SSH round trip for arriving at a screen.
+  await expect(page.getByTestId('agent-no-machine')).toBeVisible();
+  await expect(page.getByTestId('agent-probe')).toHaveCount(0);
+
+  await page.getByTestId('agent-machine').click();
+  await page.getByRole('option', { name: 'e2e-agent-host' }).click();
+
+  // The picker is OURS, not the platform's: a native <select> paints its own list in the
+  // operating system's colours and drops a white panel into a dark app. (`Dropdown.tsx`
+  // is the one this and the dashboard share.)
+  await expect(page.getByTestId('agent-manager').locator('select')).toHaveCount(0);
+
+  // Chosen, and still not read — and the screen says so with the machine's name in it,
+  // because "not probed" without a subject is a sentence about nothing.
+  await expect(page.getByTestId('agent-not-probed')).toContainText('e2e-agent-host');
+  await expect(page.getByTestId('agent-subtitle')).toContainText('e2e-agent-host');
+  await expect(page.getByTestId('agent-probe')).toBeEnabled();
+
+  // Closing it puts the workspace back and takes the chip with it.
+  await page.getByTestId('nav-agents-close').click();
+  await expect(page.getByTestId('agent-manager')).toHaveCount(0);
+  await expect(page.getByTestId('nav-agents')).toHaveCount(0);
+});
+
+/**
+ * THE SURFACE FOLLOWS THE KEY, and it did not — which is the defect this test exists for.
+ *
+ * What Rite remembers about a conversation is sealed in the vault, so the gestures that
+ * write it are drawn only while there is one open (ADR 0033). That answer was read ONCE,
+ * at startup. The workspace renders before any vault is open (base-first, ADR 0014), so
+ * the marks document was fetched with no key, cached its refusal, and nothing re-read it
+ * when the vault opened a moment later — the manager then offered no way to name anything
+ * for the rest of the session, on a window whose vault was wide open.
+ *
+ * It got through every test because no spec ever crossed that line: this suite's vault is
+ * created by `smoke.spec.ts` and is already open when any page loads. The owner found it
+ * in two minutes with the binary. So the test is the CROSSING, in both directions.
+ */
+test('locking takes the writing gestures away, and unlocking brings them back', async ({
+  page,
+  request,
+}) => {
+  const collection = await ensureCollection(request, 'e2e-agents');
+  await createMachine(request, collection, { name: 'e2e-agent-host' });
+
+  await page.goto('/');
+  await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId('toolbar-agents').click();
+  await expect(page.getByTestId('agent-manager')).toBeVisible({ timeout: 15_000 });
+
+  // Open: the surface says nothing about vaults, because there is one.
+  await expect(page.getByTestId('agent-read-only')).toHaveCount(0);
+
+  // Locked, from the route, so the in-memory key really goes — the same gesture
+  // `unlock-roundtrip.spec.ts` uses to make its own verification real.
+  await request.post('/api/auth/lock');
+  await lockVault(page);
+  await expect(page.getByTestId('agent-read-only')).toBeVisible({ timeout: 15_000 });
+
+  // And back. THIS is the direction that was broken: the answer was cached, so the
+  // manager stayed read-only behind an open vault.
+  await unlockVault(page);
+  await page.locator('#password').fill('Rite-E2E-Str0ng!pass');
+  await page.locator('button[type="submit"]').click();
+  await expect(page.getByPlaceholder('Search connections…')).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByTestId('agent-read-only'),
+    'the vault is open again, so the surface must stop saying it is not',
+  ).toHaveCount(0, { timeout: 15_000 });
+});
+
+/**
+ * A MACHINE RITE COULD NOT GET INTO IS NOT AN EMPTY MACHINE, and the difference is the
+ * whole test. "0 conversations" asserts something about the host; what happened is that
+ * nobody got to look. So the failure is shown with the machine's name in it and the
+ * reason the host gave, and NOTHING else is claimed: no band, no card, and not a line
+ * about adapters "not looked for yet" either — the probe did not skip them, it never
+ * got in.
+ *
+ * This replaced a "no access" badge that was wrong twice over: wrong in its WORD, since
+ * "no access" reads as a permission the reader lacks and sends them looking for a key
+ * they already hold, and wrong in its SOURCE, since it was drawn from stored state
+ * rather than from what the last attempt came back with. Only trying reveals a refused
+ * credential.
+ */
+test('a machine that refuses the key is reported as unread, and nothing is claimed', async ({
+  page,
+  request,
+}) => {
+  const collection = await ensureCollection(request, 'e2e-agents');
+  await createMachine(request, collection, { name: 'e2e-agent-refuses', password: 'not-the-one' });
+
+  await page.goto('/');
+  await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId('toolbar-agents').click();
+  await page.getByTestId('agent-machine').click();
+  await page.getByRole('option', { name: 'e2e-agent-refuses' }).click();
+  await page.getByTestId('agent-probe').click();
+
+  // Named, and dated by being the answer to a press: the reason comes from the host,
+  // so what is pinned is that one is shown at all, not the wording of an SSH library.
+  const note = page.getByTestId('agent-error');
+  await expect(note).toBeVisible({ timeout: 30_000 });
+  await expect(note).toContainText('e2e-agent-refuses');
+  // And it carries the reason the host gave, which is the part a reader can act on.
+  // Measured as "more than the title", not matched against a sentence: the words are an
+  // SSH library's and pinning them would fail on a dependency bump while saying nothing.
+  const title = 'Could not read e2e-agent-refuses';
+  expect(
+    (await note.innerText()).trim().length,
+    'the note names the machine and gives no reason',
+  ).toBeGreaterThan(title.length + 8);
+
+  // Nothing offered, and nothing claimed.
+  await expect(page.locator('[data-testid^="agent-card-"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid^="agent-band-"]')).toHaveCount(0);
+  await expect(page.getByTestId('agent-not-looked')).toHaveCount(0);
+  await expect(page.getByTestId('agent-empty')).toHaveCount(0);
+  await expect(page.getByTestId('agent-manager')).not.toContainText(/0 conversation/);
+});
+
+test('a browser is offered no local machine, and the route refuses it nothing', async ({
+  page,
+  request,
+}) => {
+  // THE DESKTOP ALWAYS HAS A LOCAL MACHINE — a local vault, no vault at all, or a window
+  // signed into an instance — because the CLIs are on the computer in front of the
+  // person and reaching them asks for no credential. A BROWSER HAS NONE, and this suite
+  // drives one, so what it can hold is that half: the option is not offered and the
+  // screen says why, instead of listing a machine a browser cannot reach.
+  await page.goto('/');
+  await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId('toolbar-agents').click();
+  await expect(page.getByTestId('agent-no-machine')).toContainText('A browser reaches no');
+
+  await page.getByTestId('agent-machine').click();
+  await expect(page.getByRole('option', { name: 'This machine' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+});
+
+test('the local probe answers on a local vault, framed for the parser', async ({ request }) => {
+  // The other half, through the route rather than the screen. This server is the same
+  // in-process shape a desktop window runs — a local vault, no accounts — so the answer
+  // here is the answer there. A deployed instance refuses this outright, which
+  // `e2e/server-authz-check.mjs` holds against a real accounts server.
+  //
+  // What is asserted is the FRAMING, because that is what the parser depends on: one
+  // section per adapter, announced by index, and a count before every body. The harness
+  // has no agent CLI installed, so each section says the tool is missing — which is an
+  // answer, and the shape of one.
+  const res = await request.post('/api/agents/probe-local', {
+    data: { command: "sh -c \"echo '__tool__ 0'; echo '__missing__'\"" },
+  });
+  expect(res.status()).toBe(200);
+  const body = await res.json();
+  expect(body.exitStatus).toBe(0);
+  expect(body.stdout).toContain('__tool__ 0');
+  expect(body.stdout).toContain('__missing__');
+});
+
+test('the manage route is served and gated open on a local vault', async ({ request }) => {
+  // The other half of the manager, through the route. A removal is the SAME transport and
+  // the SAME gate as a listing — a gate decides whether Rite generates the traffic, never
+  // what a person may do on a host — and it carries a name of its own so that a route
+  // running `rm` is not called `probe` in a log.
+  //
+  // What is run here is harmless on purpose: the command is the client's (`agentRemoveCmd`
+  // builds it, and refuses any path not named by the conversation's own id), so what this
+  // holds is that the route exists, answers, and reports the status the view reads.
+  const ok = await request.post('/api/agents/manage-local', {
+    data: { command: "sh -c 'exit 0'" },
+  });
+  expect(ok.status()).toBe(200);
+  expect((await ok.json()).exitStatus).toBe(0);
+
+  // And a failure comes back AS a failure: the view drops a card only on a zero status,
+  // so a non-zero one that arrived as a 200 with no status would delete a row whose file
+  // is still there.
+  const bad = await request.post('/api/agents/manage-local', {
+    data: { command: "sh -c 'exit 3'" },
+  });
+  expect(bad.status()).toBe(200);
+  expect((await bad.json()).exitStatus).toBe(3);
+});
+
+test('the filters are offered without a second grouping to fight the first', async ({ page }) => {
+  // ONE GROUPING, THREE FILTERS. The band per CLI is the structure of the page; Claude
+  // Code Desktop offers "group by date" beside "group by project" and its open tickets
+  // are what that costs — grouped by date a session no longer says which project it is
+  // from, and the activity filter stops being offered when the grouping changes.
+  //
+  // With no machine read yet there is nothing to filter, so what holds here is that the
+  // controls appear with the conversations and not before: a row of dead filters over an
+  // empty panel is how a screen teaches people to ignore it.
+  await page.goto('/');
+  await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId('toolbar-agents').click();
+  await expect(page.getByTestId('agent-manager')).toBeVisible({ timeout: 15_000 });
+
+  await expect(page.getByTestId('agent-since')).toHaveCount(0);
+  await expect(page.getByTestId('agent-search')).toHaveCount(0);
+  // The name filter has a second condition on top of that: it is not drawn until a
+  // conversation has been given a name, because a filter for something nobody has done
+  // is how a row of controls teaches people to stop reading it.
+  await expect(page.getByTestId('agent-named')).toHaveCount(0);
+  await expect(page.getByTestId('agent-only-asked')).toHaveCount(0);
+  // And no grouping control at all, in either layout — the two layouts arrange one
+  // grouping, they do not offer a second.
+  await expect(page.getByTestId('agent-layout-stacked')).toHaveCount(0);
+});
+
+test('the CLIs panel names the seven adapters and the commands they will run', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId('toolbar-agents').click();
+  await page.getByTestId('agent-tools-toggle').click();
+
+  const tools = page.getByTestId('agent-tools');
+  await expect(tools).toBeVisible();
+  // ALL SEVEN, by name. This panel is the only place a person can read what Rite is about
+  // to run on their machines before it runs it, so the list here is the whole shipped set
+  // — it was six for a while after Antigravity joined them, which meant the panel could
+  // have dropped that one and nothing would have said so.
+  for (const name of [
+    'Claude Code',
+    'Codex CLI',
+    'Gemini CLI',
+    'Grok',
+    'Antigravity',
+    'Hermes',
+    'opencode',
+  ]) {
+    await expect(tools).toContainText(name);
+  }
+  // And the commands themselves, including the two corrections that are invisible unless
+  // the text is read: Codex's three directory levels and Grok's history file.
+  await expect(tools).toContainText('~/.codex/sessions/*/*/*/*.jsonl');
+  await expect(tools).toContainText('~/.grok/sessions/*/*/chat_history.jsonl');
+  // A provenance, so "measured" is never assumed of all six.
+  await expect(tools).toContainText('vendor docs');
+  await expect(tools).toContainText('community');
+  // Gemini resumes by position, and the panel marks it rather than letting a number that
+  // moves look like an id.
+  await expect(tools).toContainText('by index');
+});

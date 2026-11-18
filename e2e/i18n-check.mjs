@@ -242,9 +242,30 @@ const ALLOWED = new Map([
     'utils/mockBackend.ts: [ternary-else] Demo connection — browser preview only',
     'mock fixture data',
   ],
+  // The rest of that library, from the release that gave the preview a local vault and a
+  // second shell: collection and machine names, an agent's first message, a note card's
+  // body. Same reason as the three above — a fixture in the reader's language reads as
+  // real data, and these are answers invented for a screen nobody can connect anything to.
+  ['utils/mockBackend.ts: [ternary-else] Web servers', 'mock fixture data'],
+  ['utils/mockBackend.ts: [ternary-else] Home lab', 'mock fixture data'],
+  ['utils/mockBackend.ts: [ternary-else] Card data in scope', 'mock fixture data'],
+  ['utils/mockBackend.ts: [ternary-else] Serving real traffic', 'mock fixture data'],
+  ['utils/mockBackend.ts: [ternary-else] The queue work', 'mock fixture data'],
+  // The vault the preview pretends to hold. It is a fixture's name in a dev-only harness:
+  // the shipped shell reads this from the window the native shell injected.
+  ['utils/devHarness.ts: [ternary-else] Preview vault', 'mock fixture data'],
+  ['utils/devHarness.ts: [prop] Preview vault', 'mock fixture data'],
   // A bounds comparison: `clientX > rect.right || clientY < rect.top` is a `>`, words
   // and a `<`, which is what the jsx-tail pattern is looking for.
   ['components/TerminalManager.tsx: [jsx-tail] rect.right || clientY', 'source code, not text'],
+  // The agent CLIs' own names, in the shipped adapters. A vendor's product name is not
+  // translated, and these six are also what the user types to run them.
+  ['utils/agentAdapters.ts: [ternary-else] Claude Code', "a vendor's product name"],
+  ['utils/agentAdapters.ts: [ternary-else] Codex CLI', "a vendor's product name"],
+  ['utils/agentAdapters.ts: [ternary-else] Gemini CLI', "a vendor's product name"],
+  ['utils/agentAdapters.ts: [ternary-else] Grok', "a vendor's product name"],
+  ['utils/agentAdapters.ts: [ternary-else] Antigravity', "a vendor's product name"],
+  ['utils/agentAdapters.ts: [ternary-else] Hermes', "a vendor's product name"],
   // A CSS font-family stack. Font names are not translated.
   ['utils/terminalPool.ts: [ternary-else] JetBrains Mono, Fira Code, monospace', 'CSS font stack'],
   // A key name is not a word: `Cmd` on a Mac, `Ctrl` elsewhere, and the chords the
@@ -429,11 +450,12 @@ check('and the allow-list has no stale entry', () => {
 /*
  * The interface addresses nobody.
  *
- * `e2e/mock-register-check.mjs` holds this for the mock, and its header says why: the
- * app's 122 strings were rewritten to address nobody while the mock kept 258 of them, so
- * the mock became the place the old register would come back from. Nothing held it on
- * THIS side afterwards, and two strings survived the sweep — "A shell we didn't find" and
- * "We'll keep trying on our own". The owner found them by reading the screen.
+ * This was held for the mock first, by a check of its own, and that check's reason is
+ * worth keeping now that both it and the mock are gone: the app's 122 strings were
+ * rewritten to address nobody while the mock kept 258 of them, so the mock became the
+ * place the old register would come back from. Nothing held it on THIS side afterwards,
+ * and two strings survived the sweep — "A shell we didn't find" and "We'll keep trying on
+ * our own". The owner found them by reading the screen.
  *
  * A label, not prose: the interface states what a thing is, and a sentence with a speaker
  * and a listener in it is a different product talking about itself.
@@ -464,6 +486,69 @@ const SPEAKERS = new RegExp(
   `(?<![\\p{L}\\p{N}_])(?:${SPEAKER_WORDS.join('|')})(?![\\p{L}\\p{N}_])`,
   'iu',
 );
+
+/*
+ * A description says the thing and stops.
+ *
+ * Length is the tell. The forms that make a hint read like a generated answer are a
+ * preamble naming the category the control already shows ("A local forward:", "Off by
+ * default"), a mechanism nobody acts on ("Rite opens the jump first, then tunnels the
+ * session"), and a closing clause that restates the one before it. Eighteen strings
+ * carried at least one; none lost a fact when it went.
+ *
+ * ENGLISH IS CAPPED AND FRENCH IS BOUNDED BY ITS RATIO, which is not a style choice: the
+ * translation runs 1.17 longer on average and 1.40 at the worst, so a second flat number
+ * would have to be loose enough to let a padded French string through under it. The
+ * ratio catches the thing that actually goes wrong on this side — a translation that
+ * explains where the original stated.
+ *
+ * The cap is where the remaining strings sit, not a round number, so a new one that runs
+ * past it is a deliberate act with a line to add here.
+ */
+const LONG_OK = new Map([
+  [
+    'admin.zkBody',
+    'four distinct facts about what an administrator can and cannot reach — the shortest ' +
+      'form is still long, and the one to shorten next by moving the legacy-collection ' +
+      'sentence onto the rows it describes',
+  ],
+  [
+    'admin.inst.dashStrength',
+    'enforcement versus policy, said twice because the two switches above it are not ' +
+      'equally strong and a reader who assumes they are is wrong about what off means',
+  ],
+]);
+const LONG_MAX = 185;
+// Measured: the worst honest translation sits at 1.40. Above 1.5 is padding, not French.
+const FR_RATIO_MAX = 1.5;
+const RATIO_FROM = 60;
+
+console.log('\nno description runs on:');
+
+check(`no English string is longer than ${LONG_MAX} characters`, () => {
+  const over = flatten(LOCALES.en)
+    .filter((key) => !LONG_OK.has(key))
+    .map((key) => [key, resolve(LOCALES.en, key)])
+    .filter(([, v]) => typeof v === 'string' && v.length > LONG_MAX)
+    .map(([key, v]) => `${key} (${v.length})`);
+  assert.deepEqual(over, [], `${over.length} over ${LONG_MAX}:\n        ` + over.join('\n        '));
+});
+
+check(`and no French string runs past ${FR_RATIO_MAX}× its English`, () => {
+  const over = flatten(LOCALES.en)
+    .map((key) => [key, resolve(LOCALES.en, key), resolve(LOCALES.fr, key)])
+    .filter(([, e, f]) => typeof e === 'string' && typeof f === 'string' && e.length >= RATIO_FROM)
+    .filter(([, e, f]) => f.length / e.length > FR_RATIO_MAX)
+    .map(([key, e, f]) => `${key} (en ${e.length}, fr ${f.length})`);
+  assert.deepEqual(over, [], `${over.length} padded:\n        ` + over.join('\n        '));
+});
+
+check('and nothing is allowed to run on without a reason that still applies', () => {
+  const stale = [...LONG_OK.keys()].filter(
+    (key) => (resolve(LOCALES.en, key) ?? '').length <= LONG_MAX,
+  );
+  assert.deepEqual(stale, [], `${stale.length} entr(y/ies) no longer run long: ${stale.join(', ')}`);
+});
 
 console.log('\nthe interface addresses nobody:');
 

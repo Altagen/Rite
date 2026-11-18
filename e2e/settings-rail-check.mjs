@@ -1,15 +1,17 @@
 /**
- * The mock's Settings rail is the app's Settings rail.
+ * What the Settings rail PROMISES, read off the component that draws it.
  *
  * The rail is how a setting is found at all — scrolling stopped working at fourteen
- * sections — so a section the mock does not have is a section the design does not describe,
- * and a section the mock alone has is a promise nothing keeps. They drifted: the app split
- * Clipboard into its own entry and the mocks kept it as a line inside Security, where
- * nobody looks for it.
+ * sections — so the questions worth pinning are: does every entry resolve to a word, is a
+ * section that a server must not offer marked so, and is a row that was argued about in
+ * the section it was given.
  *
- * Compared by LABEL rather than by id, because the ids already disagree harmlessly (`shell`
- * in the app, `terminals` in the mock) while a label is what a reader sees. Presence, not
- * order: the order is a design call, and pinning it would fail for a reason nobody acted on.
+ * WHAT THIS NO LONGER DOES IS COMPARE TWO DRAWINGS. It used to hold `design/mock/*.html`
+ * against this component, and comparing a copy to the original is how host-key
+ * verification sat under Security in the app and under SSH in the drawing for two
+ * releases with nothing failing: the comparison was of RAILS, and the rows were where the
+ * drift was. `e2e/tests/settings-surfaces.spec.ts` asks the same questions of the real
+ * screen in both shells, where the answer cannot be a copy of itself.
  *
  * Run: node e2e/settings-rail-check.mjs
  */
@@ -49,42 +51,28 @@ function appRail() {
   }));
 }
 
-/** The mock page's rail labels. */
-const mockRail = (page) =>
-  [...read(`design/mock/${page}.html`).matchAll(/\{ id:'[a-z]+', label:'([^']+)'/g)].map(
-    (m) => m[1],
-  );
-
 const rail = appRail();
 
 check('every rail entry resolves to a label', () => {
   const nameless = rail.filter((r) => typeof r.label !== 'string');
-  assert.deepEqual(nameless.map((r) => r.id), [], 'a rail entry points at a missing key');
+  assert.deepEqual(
+    nameless.map((r) => r.id),
+    [],
+    'a rail entry points at a missing key',
+  );
 });
 
-console.log('\nthe desktop mock has every section the desktop app can show:');
+console.log('\nand the sections a server context must not offer:');
 
-check('desktop', () => {
-  const have = mockRail('desktop');
-  // The desktop is a machine with a vault, so it can show all of them.
-  const missing = rail.filter((r) => !have.includes(r.label)).map((r) => r.label);
-  assert.deepEqual(missing, [], `absent from design/mock/desktop.html: ${missing.join(', ')}`);
-});
-
-console.log('\nand the web mock has every section a browser can show:');
-
-check('web', () => {
-  const have = mockRail('web');
-  // A browser has no native window and no local vault, so focus mode, the master password
-  // and the danger zone are absent BY DESIGN — and must stay absent rather than drift in.
-  const expected = rail.filter((r) => !r.native && !r.local && !r.vault);
-  const missing = expected.filter((r) => !have.includes(r.label)).map((r) => r.label);
-  assert.deepEqual(missing, [], `absent from design/mock/web.html: ${missing.join(', ')}`);
-  const forbidden = rail
-    .filter((r) => r.native || r.local || r.vault)
-    .filter((r) => have.includes(r.label))
-    .map((r) => r.label);
-  assert.deepEqual(forbidden, [], `a browser cannot show these, so the mock must not: ${forbidden.join(', ')}`);
+check('Labels is local-only, so a server never shows it in user settings', () => {
+  // THE SURFACE FOLLOWS THE OWNER. On a local vault the instance vocabulary is the
+  // person's own and belongs with their settings; the moment a server is in the picture it
+  // is the INSTANCE's, and an administrator writes it in the console (ADR 0025). A DESKTOP
+  // SIGNED INTO AN INSTANCE is a server context too — `isLocalContext` reads the server's
+  // own mode, not the shell — so it must not show it either, which is the case this pins.
+  const labels = rail.find((r) => r.label === 'Labels');
+  assert.ok(labels, 'the rail no longer has a Labels section');
+  assert.equal(labels.local, true, 'Labels must be marked `local` or a server will show it');
 });
 
 /* A section existing on both sides was never enough. Host-key verification sat in the app's

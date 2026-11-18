@@ -84,7 +84,9 @@ export function shellToStart(i: ShellSourceInputs): string | undefined {
  * `Settings.tsx` for the rows. Two files asking the same question in their own words is how
  * they came to disagree.
  */
-export function shellControls(i: ShellSourceInputs | Pick<ShellSourceInputs, 'runsHere' | 'serverContext' | 'instanceOffers'>) {
+export function shellControls(
+  i: ShellSourceInputs | Pick<ShellSourceInputs, 'runsHere' | 'serverContext' | 'instanceOffers'>,
+) {
   const theirs = instanceChoosesShell(i);
   return {
     /** The default-shell picker: this machine's choice, so only where the choice is ours. */

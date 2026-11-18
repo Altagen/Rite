@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
+import type { VocabEntry } from './labelsFormat';
 import { Backend, type LocalCollection } from '../utils/backend';
 import {
   type ConnectionInfo,
@@ -48,6 +49,7 @@ function recordFromInput(input: CreateConnectionInput) {
     jump: input.jump ?? null,
     forwards: input.forwards ?? [],
     hc: input.hc ?? null,
+    labels: input.labels ?? [],
     // What this machine does NOT keep, so opening it knows to ask (ADR 0024 §4). The
     // accounts path records the same two on its own StoredRecord.
     needsPassphrase: input.needsPassphrase ?? false,
@@ -165,10 +167,10 @@ export function useLocalCollectionsSource(): ConnectionsSource {
   // Connecting is by id: the core resolves the machine, decrypts it and opens SSH,
   // so credentials never pass through here.
   const connect = useCallback(
-    async (c: ConnectionInfo) => {
+    async (c: ConnectionInfo, command?: string) => {
       const secret = await sessionSecretFor(c);
       if (secret === null) throw new Error('cancelled');
-      const id = await Backend.Terminal.connectTerminal(c.id, secret);
+      const id = await Backend.Terminal.connectTerminal(c.id, secret, command);
       void refresh(); // pick up the new "last used"
       return id;
     },
@@ -188,8 +190,14 @@ export function useLocalCollectionsSource(): ConnectionsSource {
   );
 
   const renameCollection = useCallback(
-    async (id: string, name: string, color: string | null, hc: boolean | null) => {
-      await Backend.Local.updateCollection({ id, name, color, hc });
+    async (
+      id: string,
+      name: string,
+      color: string | null,
+      hc: boolean | null,
+      labels?: VocabEntry[],
+    ) => {
+      await Backend.Local.updateCollection({ id, name, color, hc, labels });
       await refresh();
     },
     [refresh],
@@ -322,6 +330,7 @@ export function useLocalCollectionsSource(): ConnectionsSource {
       // No Personal in a local vault (ADR 0018) — every collection is equal.
       isPersonal: false,
       hc: c.hc ?? null,
+      labels: c.labels ?? [],
       hasBoard: c.hasBoard,
     })),
     createCollection,
@@ -337,6 +346,18 @@ export function useLocalCollectionsSource(): ConnectionsSource {
       const secret = await sessionSecretFor(c);
       if (secret === null) throw new Error('cancelled');
       return Backend.Terminal.machineExec(c.id, command, secret);
+    },
+    // Discovery asks the same way, on the agents route: one gate per question.
+    probeAgents: async (c, command) => {
+      const secret = await sessionSecretFor(c);
+      if (secret === null) throw new Error('cancelled');
+      return Backend.Terminal.agentProbe(c.id, command, secret);
+    },
+    // And removing one asks the same way, on the manage route.
+    manageAgents: async (c, command) => {
+      const secret = await sessionSecretFor(c);
+      if (secret === null) throw new Error('cancelled');
+      return Backend.Terminal.agentManage(c.id, command, secret);
     },
     startForward: async (c, f) => {
       const secret = await sessionSecretFor(c);

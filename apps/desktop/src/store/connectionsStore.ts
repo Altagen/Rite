@@ -8,6 +8,7 @@
  */
 
 import { create } from 'zustand';
+import type { VocabEntry } from './labelsFormat';
 import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 
@@ -100,6 +101,14 @@ export interface ConnectionInfo {
   // even where the server policy allows it. Absent/true ⇒ follow the policy. A machine
   // can opt out of probing but can't opt into more than the server permits.
   hc?: boolean | null;
+  /**
+   * The labels this machine carries.
+   *
+   * Sealed with the rest of the record, whatever the vocabulary's scope: a word may be
+   * shared by the whole instance while WHICH machine wears it is readable only by this
+   * collection's members (`components/Labels.tsx` holds the three scopes).
+   */
+  labels?: string[];
   createdAt: number;
   updatedAt: number;
   lastUsedAt?: number | null;
@@ -130,6 +139,7 @@ export interface CreateConnectionInput {
   jump?: string | null; // jump-host connection id (see ConnectionInfo.jump)
   forwards?: PortForwardConfig[]; // saved port forwards (see ConnectionInfo.forwards)
   hc?: boolean | null; // health-check opt-out (false ⇒ never probe; see ConnectionInfo.hc)
+  labels?: string[]; // see ConnectionInfo.labels. A list replaces rather than merges.
   /**
    * This key's passphrase is not being stored, so connecting must ask for it (ADR 0024
    * §4). Not a secret — it records what the person said when they saved the machine, so a
@@ -164,6 +174,7 @@ export interface UpdateConnectionInput {
   jump?: string | null; // jump-host connection id (see ConnectionInfo.jump)
   forwards?: PortForwardConfig[]; // saved port forwards (Some ⇒ replace the whole list)
   hc?: boolean | null; // health-check opt-out (false ⇒ never probe; see ConnectionInfo.hc)
+  labels?: string[]; // see ConnectionInfo.labels. A list replaces rather than merges.
   needsPassphrase?: boolean; // see CreateConnectionInput
   needsPassword?: boolean; // see CreateConnectionInput
   /**
@@ -196,7 +207,14 @@ export interface ConnectionsSource {
   refresh: () => Promise<void>;
   select: (id: string | null) => void;
   remove: (id: string) => Promise<void>;
-  connect: (conn: ConnectionInfo) => Promise<string>;
+  /**
+   * Open a session on a machine, and return its id.
+   *
+   * `command` is the program the CHANNEL runs, not something typed into a shell
+   * afterwards (ADR 0022 §7.1) — a shell discards queued input while it sets the tty up,
+   * so an agent's resume line has to be named here. Absent ⇒ the account's login shell.
+   */
+  connect: (conn: ConnectionInfo, command?: string) => Promise<string>;
   create: (input: CreateConnectionInput) => Promise<void>;
   update: (input: UpdateConnectionInput) => Promise<void>;
   /**
@@ -226,6 +244,14 @@ export interface ConnectionsSource {
     isPersonal: boolean;
     // Collection-wide active-probe opt-out (ADR 0017): false ⇒ never probe its machines.
     hc?: boolean | null;
+    // The vocabulary this collection declares (see CollectionHeader.labels). Sealed in the
+    // header, so it is this collection's members' and nobody else's — and it never travels
+    // up to the instance.
+    //
+    // A word is a bare string when nobody chose a colour for it and an object when
+    // somebody did — the two shapes a stored list holds, so a list written before colours
+    // existed keeps working untouched.
+    labels?: VocabEntry[];
     // Whether this collection has a Board (an itemsKey-encrypted blob of cards). The
     // blob itself is read via readBoard; this flag lets the UI show an indicator.
     hasBoard?: boolean;
@@ -240,6 +266,21 @@ export interface ConnectionsSource {
   // detection (docker ps / systemctl). Routes to the right execute path per source
   // (vault by id, accounts by decrypted target).
   execRemote?: (
+    connection: ConnectionInfo,
+    command: string,
+  ) => Promise<import('../utils/backend').RemoteCommandOutput>;
+  // Agent discovery on a machine (ADR 0022 §4). Routes per source exactly as execRemote
+  // does — and it is a SEPARATE member rather than a flag on that one because the two
+  // reach different routes, which answer to different gates: an administrator may allow
+  // container listings while refusing to let the product enumerate home directories.
+  probeAgents?: (
+    connection: ConnectionInfo,
+    command: string,
+  ) => Promise<import('../utils/backend').RemoteCommandOutput>;
+  // Removing one conversation on a machine (ADR 0022 §6 addendum). Routes per source
+  // like the two above, on the manage route — the same gate as discovery, and a name of
+  // its own because what it runs is `rm` and not `ls`.
+  manageAgents?: (
     connection: ConnectionInfo,
     command: string,
   ) => Promise<import('../utils/backend').RemoteCommandOutput>;
@@ -266,6 +307,8 @@ export interface ConnectionsSource {
     name: string,
     color: string | null,
     hc: boolean | null,
+    /** The declared vocabulary, in the two stored shapes. A list replaces; absent keeps. */
+    labels?: VocabEntry[],
   ) => Promise<void>;
   /** Add or rename a folder inside a collection. `from` absent ⇒ create. */
   saveFolder?: (args: {

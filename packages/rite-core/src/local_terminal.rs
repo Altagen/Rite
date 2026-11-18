@@ -92,6 +92,48 @@ impl LocalSession {
         Self::spawn_inner(events, None, LocalProgram::Argv(argv), cwd).await
     }
 
+    /// Run one command on THIS machine and capture what it printed.
+    ///
+    /// The local twin of `run_remote_command`, and it exists for the same caller: agent
+    /// discovery, which on the desktop has to look at the client's own home directory
+    /// (ADR 0022 §4). An SSH exec would be a connection to oneself — credentials, a host
+    /// key and a network round trip to read a folder that is already right here.
+    ///
+    /// NO PTY, unlike everything else in this file. A probe prints and exits; a terminal
+    /// is for things a person types into. The command is handed to `sh -c` exactly as the
+    /// SSH side hands it to the far shell, so one adapter's `list` runs the same way on
+    /// both — the whole point of an adapter being a command.
+    ///
+    /// THE SAME 15-SECOND CAP as a remote one-shot, for the same reason: a tool that
+    /// hangs must not wedge the UI. A timeout kills the child rather than leaving it.
+    pub async fn run_captured(command: String) -> Result<crate::terminal::RemoteCommandOutput> {
+        use tokio::process::Command;
+        let child = Command::new("sh")
+            .arg("-c")
+            .arg(&command)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()?;
+        let out = match tokio::time::timeout(
+            crate::terminal::LOCAL_COMMAND_TIMEOUT,
+            child.wait_with_output(),
+        )
+        .await
+        {
+            Ok(result) => result?,
+            // `kill_on_drop` is what actually ends it: the future is dropped here, so the
+            // child goes with it rather than outliving the request that asked for it.
+            Err(_) => return Err(anyhow!("the command did not finish in time")),
+        };
+        Ok(crate::terminal::RemoteCommandOutput {
+            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+            exit_status: out.status.code().map(|c| c as u32),
+        })
+    }
+
     /// Where the shell of `pid` currently is, or `None` when it cannot be known.
     ///
     /// Reads `/proc/<pid>/cwd`, which is how tmux answers the same question. That path is

@@ -42,6 +42,17 @@ export function CollectionEditDialog({
    * sealed to me with the session keypair. Same form, different crypto locus.
    * `hc` is the health-check opt-out as it is stored: `false` ⇒ opted out.
    */
+  /**
+   * How to persist. A local vault passes this and the core wraps the collection keys with
+   * the master key; a server context leaves it out and the keys are sealed to me with the
+   * session keypair. Same form, different crypto locus.
+   *
+   * NO VOCABULARY HERE. The words this collection declares are edited in the label manager
+   * (Settings → Labels, with a scope selector), because a list of two hundred does not
+   * belong in a modal and because managing words and applying one are two gestures. What
+   * matters on this path is that a rename KEEPS them: nothing is sent, so the core merges
+   * onto the stored header and the accounts path spreads it.
+   */
   onPersist?: (name: string, color: string | null, hc: boolean | null) => Promise<void>;
 }) {
   const { publicKey, privateKey } = useServerSession();

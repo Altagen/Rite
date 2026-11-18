@@ -13,8 +13,7 @@
  * Positioned at the pointer, which is what makes it a context menu rather than a dropdown
  * that happens to open elsewhere. Dismissal follows `SplitMenu`: a mousedown outside, or
  * Escape.
- *
- * Mirrors `design/mock/desktop.html`, which got it first (ADR 0019).
+
  */
 import { useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n/i18n';

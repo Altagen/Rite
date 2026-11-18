@@ -26,6 +26,10 @@ interface Props<T extends string | number> {
   /** Labels the button for assistive technology and for tests. */
   label: string;
   testId?: string;
+  /** Shown and unusable, rather than absent. A choice that cannot be made right now
+   *  still has to say what is in force — hiding the control would leave the reader
+   *  wondering whether the setting exists at all. */
+  disabled?: boolean;
 }
 
 export function Dropdown<T extends string | number>({
@@ -34,6 +38,7 @@ export function Dropdown<T extends string | number>({
   onChange,
   label,
   testId,
+  disabled = false,
 }: Props<T>) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -61,10 +66,11 @@ export function Dropdown<T extends string | number>({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={label}
-        className="flex w-full items-center justify-between rounded border border-border bg-input px-3 py-2 text-left text-foreground focus:border-primary focus:outline-none"
+        className="flex w-full items-center justify-between rounded border border-border bg-input px-3 py-2 text-left text-foreground focus:border-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         data-testid={testId}
       >
         <span>{current?.label ?? ''}</span>
@@ -73,7 +79,7 @@ export function Dropdown<T extends string | number>({
         </svg>
       </button>
 
-      {open && (
+      {open && !disabled && (
         <div
           role="listbox"
           aria-label={label}

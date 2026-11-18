@@ -3,7 +3,7 @@
  * rosters), master-detail. For each team: its members with Manager/Member roles, the
  * collections offered to it (discovery — open if a member, request access if not), and
  * leave-team. Managing who's in a team is the org/team-admin console; this is the member's
- * view. Mirrors design/mock/teams.html.
+ * view.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -275,7 +275,7 @@ export function TeamsDashboard() {
                 <div className="flex items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/[0.08] p-3 text-xs text-foreground/80">
                   <IconLock className="mt-0.5 h-4 w-4 flex-none text-primary" />
                   <div>
-                    <b>{t('teams.discoveryNote')}</b> {t('teams.discoveryWhy')}
+                    <b>{t('teams.discoveryNote')}</b> {t('coll.labelNotEncrypted')}
                   </div>
                 </div>
 

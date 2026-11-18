@@ -2,7 +2,7 @@
  * Force-password-change screen (ADR 0010 addendum). Shown when the account still uses an
  * admin-set password (first login, or after an admin reset): the user must set a password
  * only they know, which mints a fresh vault + keypair so the admin can no longer derive the
- * key. Mirrors design/mock/setup.html. Blocks the app until done.
+ * key. Blocks the app until done.
  */
 
 import { useMemo, useState } from 'react';

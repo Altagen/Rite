@@ -1,5 +1,5 @@
 /**
- * Collection view (ADR 0016, transposed from design/mock) — a collection opened
+ * Collection view (ADR 0016) — a collection opened
  * in the main area as cards/list. Header (icon, name, role, member/share button),
  * a toolbar (filter, sort, grid/list, + Machine), and the machines grouped by the
  * collection's shared sub-folders. Purely presentational over the connections the
@@ -8,6 +8,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
+import { LabelChip } from './Labels';
+import { IconTag } from './icons';
+import type { VocabWord } from '../store/labelsFormat';
 import { relTime } from '../utils/relTime';
 import { type ConnectionInfo } from '../store/connectionsStore';
 import { useServerSession } from '../store/serverSessionStore';
@@ -68,6 +71,7 @@ export function CollectionView({
   hc,
   machines,
   folders,
+  declared,
   canWrite,
   isPersonal,
   onConnect,
@@ -76,6 +80,7 @@ export function CollectionView({
   onNewMachine,
   onNewFolder,
   onImport,
+  onOpenLabels,
   onOpenMembers,
   onOpenBoard,
 }: {
@@ -85,6 +90,13 @@ export function CollectionView({
   hc?: boolean | null; // collection-wide active-probe opt-out (ADR 0017): false ⇒ never probe here
   machines: ConnectionInfo[];
   folders?: { name: string; color: string | null }[]; // declared sub-folders (show empty)
+  /**
+   * The words declared with a colour, nearest scope first — what a chip resolves against.
+   *
+   * Passed in rather than read here: which scopes a word can come from depends on the
+   * context, and this view is handed one collection's machines.
+   */
+  declared?: readonly VocabWord[];
   canWrite: boolean;
   isPersonal?: boolean; // the personal collection can't be shared
   onConnect: (c: ConnectionInfo) => void;
@@ -93,6 +105,8 @@ export function CollectionView({
   onNewMachine: (folderPath?: string) => void; // creates in the folder you're browsing
   onNewFolder?: (parentPath?: string) => void; // creates a sub-folder of the current path
   onImport: () => void;
+  /** Open this collection's own vocabulary. Absent ⇒ there is no writer for it here. */
+  onOpenLabels?: () => void;
   onOpenMembers?: () => void; // absent when membership isn't editable from here
   onOpenBoard?: () => void; // open the collection Board (members-only card space)
 }) {
@@ -115,6 +129,8 @@ export function CollectionView({
   const activeFor = (id: string) => (checking[id] ? ('checking' as const) : results[id]?.status);
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useState<'name' | 'host' | 'lastUsed'>('name');
+  /** Which label narrows the list. `@any` is all of them, folded for comparison. */
+  const [label, setLabel] = useState('@any');
   const [layout, setLayout] = useState<'grid' | 'list'>('grid');
   const [path, setPath] = useState(''); // the folder currently being browsed ('' = root)
   const folderColor = useMemo(() => {
@@ -130,15 +146,40 @@ export function CollectionView({
           (m) =>
             m.name.toLowerCase().includes(q) ||
             m.hostname.toLowerCase().includes(q) ||
-            m.username.toLowerCase().includes(q),
+            m.username.toLowerCase().includes(q) ||
+            // Labels too, and client-side because they are sealed — see LibrarySidebar.
+            (m.labels ?? []).some((l) => l.toLowerCase().includes(q)),
         )
       : machines;
-    return [...filtered].sort((a, b) => {
+    // THE FILTER COMPOSES WITH THE SEARCH rather than replacing it: one narrows by a word
+    // chosen from a list, the other by anything typed, and a screen that made them
+    // exclusive would be answering a question nobody asked.
+    const byLabel =
+      label === '@any'
+        ? filtered
+        : filtered.filter((m) =>
+            (m.labels ?? []).some((l) => l.toLowerCase() === label.toLowerCase()),
+          );
+    return [...byLabel].sort((a, b) => {
       if (sort === 'host') return a.hostname.localeCompare(b.hostname);
       if (sort === 'lastUsed') return (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0);
       return a.name.localeCompare(b.name);
     });
-  }, [machines, filter, sort]);
+  }, [machines, filter, sort, label]);
+
+  /**
+   * The words machines HERE actually wear, which is what this filter can narrow by.
+   *
+   * Not the declared vocabulary: offering a word no machine in this collection carries
+   * would be a filter guaranteed to empty the screen.
+   */
+  const inUse = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const m of machines) {
+      for (const l of m.labels ?? []) if (!seen.has(l.toLowerCase())) seen.set(l.toLowerCase(), l);
+    }
+    return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
+  }, [machines]);
 
   const filtering = filter.trim() !== '';
 
@@ -307,6 +348,16 @@ export function CollectionView({
         </svg>
         <span>{relTime(c.lastUsedAt, t, { never: '—' })} · ssh</span>
       </div>
+      {/* The labels, last, because they are the person's own filing rather than something
+          the machine told us — and the reason they are on the card at all is to be seen
+          without reading. The colour comes from each word's own text. */}
+      {(c.labels ?? []).length !== 0 && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {c.labels!.map((l) => (
+            <LabelChip key={l.toLowerCase()} label={l} small declared={declared} />
+          ))}
+        </div>
+      )}
     </div>
   );
 
@@ -510,6 +561,20 @@ export function CollectionView({
             {t('cview.members')}
           </button>
         )}
+        {/* THE WORDS THIS COLLECTION DECLARES, on the collection — in both shells, because
+            a collection is owned by its members whether a server is in the picture or not.
+            The instance's list is the half that moves: a person's own settings locally, the
+            admin console on a server. */}
+        {onOpenLabels && (
+          <button
+            onClick={onOpenLabels}
+            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+            data-testid="cview-labels"
+          >
+            <IconTag className="h-4 w-4" />
+            {t('labels.field')}
+          </button>
+        )}
       </div>
 
       {/* Governed-probing notice (probing disabled / rate-limited) — calm, dismissable. */}
@@ -549,6 +614,24 @@ export function CollectionView({
             className="min-w-0 flex-1 bg-transparent text-sm outline-none"
           />
         </div>
+        {/* Only once a machine here wears one: a filter for something nobody has done is
+            how a row of controls teaches people to stop reading it. */}
+        {inUse.length !== 0 && (
+          <select
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            aria-label={t('labels.field')}
+            className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm"
+            data-testid="cview-label"
+          >
+            <option value="@any">{t('labels.anyLabel')}</option>
+            {inUse.map((l) => (
+              <option key={l.toLowerCase()} value={l}>
+                {l}
+              </option>
+            ))}
+          </select>
+        )}
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value as 'name' | 'host' | 'lastUsed')}

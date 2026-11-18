@@ -1,8 +1,7 @@
 /**
  * The user's collection manager at the `/collections` route (ADR 0016) — the
  * collections I'm a member of, opened from the header. A dedicated page (top bar +
- * the master-detail CollectionsPanel: rail on the left, editor on the right),
- * matching design/mock/collections.html.
+ * the master-detail CollectionsPanel: rail on the left, editor on the right).
  */
 
 import { useRef, useState } from 'react';

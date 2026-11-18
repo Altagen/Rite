@@ -1,7 +1,10 @@
 /**
- * Icon set — the exact SVG paths from the design mock (design/mock/rite.js +
- * full-data.js + the per-mock `M` set), as React components, so the app matches
- * the mock's iconography. All are stroked (fill:none, 2px, round caps), 24×24.
+ * Icon set — one stroked family as React components, so every glyph in the app is
+ * drawn the same way: fill:none, 2px, round caps, 24×24.
+ *
+ * `IconRefresh` marks the live read in the agent panel, drawn in the same single-path,
+ * stroked style as the rest — a second style for one glyph is how an icon set stops
+ * being one.
  */
 
 type IconProps = { className?: string };
@@ -111,6 +114,11 @@ export const IconKey = (p: IconProps) => (
     <path d="M10.8 12.2L20 3M17 6l2 2M14 9l2 2" />
   </Svg>
 );
+export const IconTag = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0l-7.2-7.2a2 2 0 01-.6-1.4V5a2 2 0 012-2h7a2 2 0 011.4.6l7.4 7.4a2 2 0 010 2.4M7.5 7.5h.01" />
+  </Svg>
+);
 export const IconTrash = (p: IconProps) => (
   <Svg {...p}>
     <path d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
@@ -119,6 +127,11 @@ export const IconTrash = (p: IconProps) => (
 export const IconSignOut = (p: IconProps) => (
   <Svg {...p}>
     <path d="M16 17l5-5-5-5M21 12H9M12 3H6a2 2 0 00-2 2v14a2 2 0 002 2h6" />
+  </Svg>
+);
+export const IconCopy = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M8 4h10a2 2 0 012 2v10M6 8h10a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8a2 2 0 012-2z" />
   </Svg>
 );
 export const IconEdit = (p: IconProps) => (
@@ -142,6 +155,11 @@ export const IconGrid = (p: IconProps) => (
 export const IconList = (p: IconProps) => (
   <Svg {...p}>
     <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
+  </Svg>
+);
+export const IconRefresh = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M21 12a9 9 0 11-3-6.7M21 4v5h-5" />
   </Svg>
 );
 export const IconSort = (p: IconProps) => (

@@ -86,7 +86,9 @@ check('several layouts keep their own panes', () => {
 });
 
 check('startup defaults to off', () => {
-  const { layouts } = parseLayoutFile('[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  command = "top"\n');
+  const { layouts } = parseLayoutFile(
+    '[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  command = "top"\n',
+  );
   assert.equal(layouts[0].startup, false);
 });
 
@@ -149,8 +151,11 @@ check('the documentation and the parser agree on what [terminal] takes', () => {
   const example = /```toml\n([\s\S]*?)```/.exec(section);
   assert.ok(example, 'the section lost its example');
   const parsed = parseLayoutFile(example[1]);
-  assert.equal(parsed.error, null, `the documented example does not parse: ${
-    parsed.error && parsed.error.message}`);
+  assert.equal(
+    parsed.error,
+    null,
+    `the documented example does not parse: ${parsed.error && parsed.error.message}`,
+  );
   assert.equal(parsed.terminal.newTabCwd, '/srv/work');
   assert.equal(parsed.terminal.copyMode, 'select');
 });
@@ -237,7 +242,6 @@ check('the terminal table still names what it takes', () => {
   fails('[terminal]\nnewTabCwdd = "/a"\n', 2, 'takes copyMode or newTabCwd');
 });
 
-
 check('an unquoted value names its line', () => {
   fails('[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  machine = web-01\n', 5, 'quoted string');
 });
@@ -259,7 +263,11 @@ check('a key a pane does not have', () => {
 });
 
 check('a key a layout does not have', () => {
-  fails('[[layout]]\nname = "A"\nlabel = "x"\n\n  [[layout.pane]]\n  command = "top"\n', 3, 'name and startup');
+  fails(
+    '[[layout]]\nname = "A"\nlabel = "x"\n\n  [[layout.pane]]\n  command = "top"\n',
+    3,
+    'name and startup',
+  );
 });
 
 check('a line that is neither a key nor a table', () => {
@@ -291,7 +299,12 @@ check('what is written parses to what was written', () => {
   // The round trip is what the release-candidate carry-over relies on: layouts read
   // out of the old per-device store are turned into a file and must come back.
   const layouts = [
-    { id: 'x', name: 'Morning', startup: true, panes: [{ command: '' }, { machine: 'web-01', command: 'top', name: 'load' }] },
+    {
+      id: 'x',
+      name: 'Morning',
+      startup: true,
+      panes: [{ command: '' }, { machine: 'web-01', command: 'top', name: 'load' }],
+    },
   ];
   const { layouts: back, error } = parseLayoutFile(formatLayoutFile(layouts));
   assert.equal(error, null);
@@ -308,7 +321,9 @@ check('what is written parses to what was written', () => {
 });
 
 check('a quote in a name survives the round trip', () => {
-  const layouts = [{ id: 'x', name: 'the "big" one', startup: false, panes: [{ command: 'echo hi' }] }];
+  const layouts = [
+    { id: 'x', name: 'the "big" one', startup: false, panes: [{ command: 'echo hi' }] },
+  ];
   const text = formatLayoutFile(layouts);
   const { layouts: back, error } = parseLayoutFile(text);
   assert.equal(error, null, `${text} should parse`);
@@ -318,7 +333,9 @@ check('a quote in a name survives the round trip', () => {
 console.log('\nthe presets in the same file:');
 
 check('a preset is a name and a command', () => {
-  const { presets, error } = parseLayoutFile('[[preset]]\nname = "Logs"\ncommand = "journalctl -fu app"\n');
+  const { presets, error } = parseLayoutFile(
+    '[[preset]]\nname = "Logs"\ncommand = "journalctl -fu app"\n',
+  );
   assert.equal(error, null);
   assert.deepEqual(
     presets.map((p) => [p.name, p.command]),
@@ -391,7 +408,8 @@ const render = (layout, w = 32, h = 12) =>
     const grid = Array.from({ length: h }, () => Array(w).fill('.'));
     const paint = (node, x, y, pw, ph) => {
       if (node.type !== 'split') {
-        for (let r = y; r < y + ph; r++) for (let c = x; c < x + pw; c++) grid[r][c] = node.session.connectionName;
+        for (let r = y; r < y + ph; r++)
+          for (let c = x; c < x + pw; c++) grid[r][c] = node.session.connectionName;
         return;
       }
       if (node.direction === 'horizontal') {
@@ -409,19 +427,28 @@ const render = (layout, w = 32, h = 12) =>
   });
 
 const bare = (count, w = 12, h = 4) => {
-  const panes = Array.from({ length: count }, (_, i) => `  [[layout.pane]]\n  command = "c${i}"`).join('\n\n');
+  const panes = Array.from(
+    { length: count },
+    (_, i) => `  [[layout.pane]]\n  command = "c${i}"`,
+  ).join('\n\n');
   const { layouts, error } = parseLayoutFile(`[[layout]]\nname = "G"\n\n${panes}\n`);
   assert.equal(error, null, JSON.stringify(error));
   return render(layouts[0], w, h)[0].picture;
 };
 
 check('two bare panes sit side by side', () => {
-  assert.equal(bare(2), ['111111222222', '111111222222', '111111222222', '111111222222'].join('\n'));
+  assert.equal(
+    bare(2),
+    ['111111222222', '111111222222', '111111222222', '111111222222'].join('\n'),
+  );
 });
 
 check('four bare panes make a 2×2 grid, in reading order', () => {
   // The promise in ADR 0023 §4, and the one thing a file is allowed to leave unsaid.
-  assert.equal(bare(4), ['111111222222', '111111222222', '333333444444', '333333444444'].join('\n'));
+  assert.equal(
+    bare(4),
+    ['111111222222', '111111222222', '333333444444', '333333444444'].join('\n'),
+  );
 });
 
 check('eight bare panes make 4×2, because wider is better for a terminal', () => {
@@ -517,7 +544,11 @@ check('a split that is not one of the four words', () => {
 });
 
 check('a size outside what the screen can honour', () => {
-  for (const [value, line] of [['5%', 8], ['95%', 8], ['half', 8]]) {
+  for (const [value, line] of [
+    ['5%', 8],
+    ['95%', 8],
+    ['half', 8],
+  ]) {
     fails(
       '[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  command = "a"\n\n  [[layout.pane]]\n  size = "' +
         value +
@@ -566,7 +597,11 @@ check('two panes of one layout may not share a name', () => {
 });
 
 check('the first pane of a tab is the whole area', () => {
-  for (const [key, value] of [['split', '"right"'], ['of', '"x"'], ['size', '"40%"']]) {
+  for (const [key, value] of [
+    ['split', '"right"'],
+    ['of', '"x"'],
+    ['size', '"40%"'],
+  ]) {
     fails(
       `[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  command = "a"\n  ${key} = ${value}\n`,
       6,
@@ -593,24 +628,32 @@ check('the layouts, the comments and the blank lines survive an edit', () => {
   assert.ok(out.startsWith('# my file'), out);
   assert.ok(out.includes('# keep me'), out);
   assert.ok(!out.includes('"Old"'), out);
-  assert.deepEqual(parse.presets.map((p) => p.name), ['Load']);
-  assert.deepEqual(parse.layouts.map((l) => l.name), ['Morning']);
+  assert.deepEqual(
+    parse.presets.map((p) => p.name),
+    ['Load'],
+  );
+  assert.deepEqual(
+    parse.layouts.map((l) => l.name),
+    ['Morning'],
+  );
 });
 
 check('a preset block followed straight by a layout does not swallow it', () => {
   // The off-by-one that a less careful splice makes: the block ends at the next
   // table, and the next table must survive it.
-  const { parse } = spliced('[[preset]]\n[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  command = "x"\n', [
-    { id: 'a', name: 'Load', command: 'top' },
-  ]);
+  const { parse } = spliced(
+    '[[preset]]\n[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  command = "x"\n',
+    [{ id: 'a', name: 'Load', command: 'top' }],
+  );
   assert.equal(parse.layouts.length, 1);
   assert.equal(parse.presets.length, 1);
 });
 
 check('a file with no presets yet gets them before its first table', () => {
-  const { parse } = spliced('# header\n\n[[layout]]\nname = "M"\n\n  [[layout.pane]]\n  command = ""\n', [
-    { id: 'a', name: 'Load', command: 'top' },
-  ]);
+  const { parse } = spliced(
+    '# header\n\n[[layout]]\nname = "M"\n\n  [[layout.pane]]\n  command = ""\n',
+    [{ id: 'a', name: 'Load', command: 'top' }],
+  );
   assert.equal(parse.presets.length, 1);
   assert.equal(parse.layouts.length, 1);
 });
@@ -618,7 +661,10 @@ check('a file with no presets yet gets them before its first table', () => {
 check('an empty file and a comments-only file both take the presets', () => {
   for (const input of ['', '# only comments\n']) {
     const { parse } = spliced(input, [{ id: 'a', name: 'Load', command: 'top' }]);
-    assert.deepEqual(parse.presets.map((p) => p.name), ['Load']);
+    assert.deepEqual(
+      parse.presets.map((p) => p.name),
+      ['Load'],
+    );
   }
 });
 
@@ -640,7 +686,10 @@ check('two scattered preset blocks collapse into one library', () => {
       { id: '2', name: 'B', command: 'b' },
     ],
   );
-  assert.deepEqual(parse.presets.map((p) => p.name), ['A', 'B']);
+  assert.deepEqual(
+    parse.presets.map((p) => p.name),
+    ['A', 'B'],
+  );
   assert.equal(parse.layouts.length, 1);
 });
 
@@ -672,18 +721,27 @@ check('turning it on adds the key under name', () => {
   assert.match(out, /name = "Warroom".*\nstartup = true\n/);
   const parse = parseLayoutFile(out);
   assert.equal(parse.error, null, JSON.stringify(parse.error));
-  assert.deepEqual(parse.layouts.map((l) => l.startup), [true, true]);
+  assert.deepEqual(
+    parse.layouts.map((l) => l.startup),
+    [true, true],
+  );
 });
 
 check('turning it off removes the key rather than writing false', () => {
   const out = setLayoutStartup(WITH_STARTUP, 0, false);
   assert.ok(!out.includes('startup'), 'the key should be gone, not set to false');
-  assert.deepEqual(parseLayoutFile(out).layouts.map((l) => l.startup), [false, false]);
+  assert.deepEqual(
+    parseLayoutFile(out).layouts.map((l) => l.startup),
+    [false, false],
+  );
 });
 
 check('turning it on when it is already on changes nothing that matters', () => {
   const out = setLayoutStartup(WITH_STARTUP, 0, true);
-  assert.deepEqual(parseLayoutFile(out).layouts.map((l) => l.startup), [true, false]);
+  assert.deepEqual(
+    parseLayoutFile(out).layouts.map((l) => l.startup),
+    [true, false],
+  );
 });
 
 check('turning it off when it is already off is a no-op', () => {
@@ -706,9 +764,13 @@ check('the comments, the preset and the other layout survive the edit', () => {
 });
 
 check('it targets the position in the file, not the name', () => {
-  const twins = '[[layout]]\nname = "Same"\n\n  [[layout.pane]]\n  command = "a"\n\n[[layout]]\nname = "Same"\n\n  [[layout.pane]]\n  command = "b"\n';
+  const twins =
+    '[[layout]]\nname = "Same"\n\n  [[layout.pane]]\n  command = "a"\n\n[[layout]]\nname = "Same"\n\n  [[layout.pane]]\n  command = "b"\n';
   const out = setLayoutStartup(twins, 1, true);
-  assert.deepEqual(parseLayoutFile(out).layouts.map((l) => l.startup), [false, true]);
+  assert.deepEqual(
+    parseLayoutFile(out).layouts.map((l) => l.startup),
+    [false, true],
+  );
 });
 
 check('a layout with no name takes the key under its header', () => {

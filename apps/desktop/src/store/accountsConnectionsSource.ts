@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
+import type { VocabEntry } from './labelsFormat';
 import { Backend } from '../utils/backend';
 import { useServerSession } from './serverSessionStore';
 import {
@@ -40,6 +41,7 @@ import {
 } from '../utils/collectionCrypto';
 import type { CollectionRole, QuickEndpoint } from '../utils/backend';
 import type { CollectionHeader, CollectionFolder } from '../utils/collectionHeader';
+import { readCollectionHeader, writeCollectionHeader } from '../utils/collectionHeader';
 import { type BoardCard, parseBoard } from '../utils/board';
 
 /**
@@ -88,6 +90,14 @@ export interface StoredRecord {
   // Health-check opt-out (ADR 0017): false ⇒ never actively probe this machine.
   // Sealed inside the blob, so the opt-out is zero-knowledge like everything else.
   hc?: boolean | null;
+  /**
+   * The labels this machine carries.
+   *
+   * INSIDE THE BLOB, which is what makes a PUBLIC vocabulary safe: a word may be shared by
+   * the whole instance while WHICH machine wears it is sealed to this collection's members
+   * and unreadable by the server (`components/Labels.tsx` holds the three scopes).
+   */
+  labels?: string[];
 }
 
 /** A decrypted connection kept in RAM: its record plus, if shared, its scope. */
@@ -217,6 +227,7 @@ async function toInfo(
     jump: r.jump ?? null,
     forwards: r.forwards ?? [],
     hc: r.hc ?? null,
+    labels: r.labels ?? [],
     createdAt,
     updatedAt,
     // Passive "last seen" is this user's own local record (ADR 0017) — never server-side.
@@ -242,6 +253,7 @@ function recordFromCreate(input: CreateConnectionInput): StoredRecord {
     jump: input.jump ?? null,
     forwards: input.forwards ?? [],
     hc: input.hc ?? null,
+    labels: input.labels ?? [],
     needsPassphrase: input.needsPassphrase ?? false,
     needsPassword: input.needsPassword ?? false,
   };
@@ -268,6 +280,9 @@ function applyUpdate(base: StoredRecord, input: UpdateConnectionInput): StoredRe
   if (input.jump !== undefined) merged.jump = input.jump;
   if (input.forwards !== undefined) merged.forwards = input.forwards;
   if (input.hc !== undefined) merged.hc = input.hc;
+  // A list REPLACES rather than merges: a merge would have no way to say "take that one
+  // off", which is half of what editing labels is.
+  if (input.labels !== undefined) merged.labels = input.labels;
   if (input.needsPassphrase !== undefined) merged.needsPassphrase = input.needsPassphrase;
   if (input.needsPassword !== undefined) merged.needsPassword = input.needsPassword;
   // After `authMethod` above, so replacing the key and dropping its passphrase in one edit
@@ -400,6 +415,9 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       memberCount: number;
       isPersonal: boolean;
       hc: boolean | null;
+      // The vocabulary this collection declares (ADR 0016's header). Sealed with the rest.
+      // Two shapes: a bare word, or a word with the colour somebody chose for it.
+      labels: VocabEntry[];
       hasBoard: boolean;
     }[]
   >([]);
@@ -436,6 +454,9 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       memberCount: number;
       isPersonal: boolean;
       hc: boolean | null;
+      // The vocabulary this collection declares (ADR 0016's header). Sealed with the rest.
+      // Two shapes: a bare word, or a word with the colour somebody chose for it.
+      labels: VocabEntry[];
       hasBoard: boolean;
     }[] = [];
     for (const col of cols) {
@@ -461,6 +482,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
           memberCount,
           isPersonal,
           hc: header.hc ?? null,
+          labels: header.labels ?? [],
           hasBoard: !!col.boardEnc,
         });
         if (canWrite(col.role))
@@ -506,7 +528,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
 
   const select = useCallback((id: string | null) => setSelectedConnectionId(id), []);
 
-  const connect = useCallback(async (conn: ConnectionInfo): Promise<string> => {
+  const connect = useCallback(async (conn: ConnectionInfo, command?: string): Promise<string> => {
     const entry = entries.current.get(conn.id);
     if (!entry) throw new Error('connection is not available');
     const { record } = entry;
@@ -536,6 +558,9 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       // No collection (a local-vault machine) means no claim to make: there the policy
       // does not apply, because there is no server to set it.
       entry.collectionId ? { collectionId: entry.collectionId, itemId: conn.id } : undefined,
+      // The program the channel runs, when there is one. This is the route a browser
+      // reaches a collection's machine by, so an agent's resume line travels here.
+      command,
     );
     // Record this user's own "last connected" locally (passive status, ADR 0017).
     recordLastUsed(conn.id);
@@ -676,6 +701,39 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     return Backend.Terminal.machineExecQuick(
       { ...endpointOf(record, auth), jumps: resolveJumpChain(entries.current, record) },
       command,
+      // Which item this is, as `connect` sends it: an instance that forbids ad-hoc Quick
+      // SSH must still run a probe on what its members saved.
+      entry.collectionId ? { collectionId: entry.collectionId, itemId: conn.id } : undefined,
+    );
+  }, []);
+
+  // Discovery on an accounts connection: the same client-execute shape as `execRemote`,
+  // on the agents route so the agent gate is the one that answers.
+  const probeAgents = useCallback(async (conn: ConnectionInfo, command: string) => {
+    const entry = entries.current.get(conn.id);
+    if (!entry) throw new Error('connection is not available');
+    const { record } = entry;
+    const auth = await authFor(conn.id, record, record.name || conn.name);
+    if (auth === null) throw new Error('cancelled');
+    return Backend.Terminal.agentProbeQuick(
+      { ...endpointOf(record, auth), jumps: resolveJumpChain(entries.current, record) },
+      command,
+      entry.collectionId ? { collectionId: entry.collectionId, itemId: conn.id } : undefined,
+    );
+  }, []);
+
+  // Removing one conversation on an accounts connection: the same client-execute shape
+  // again, on the manage route.
+  const manageAgents = useCallback(async (conn: ConnectionInfo, command: string) => {
+    const entry = entries.current.get(conn.id);
+    if (!entry) throw new Error('connection is not available');
+    const { record } = entry;
+    const auth = await authFor(conn.id, record, record.name || conn.name);
+    if (auth === null) throw new Error('cancelled');
+    return Backend.Terminal.agentManageQuick(
+      { ...endpointOf(record, auth), jumps: resolveJumpChain(entries.current, record) },
+      command,
+      entry.collectionId ? { collectionId: entry.collectionId, itemId: conn.id } : undefined,
     );
   }, []);
 
@@ -691,6 +749,9 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       return Backend.Terminal.startQuickForward({
         connectionId: conn.id,
         target: { ...endpointOf(record, auth), jumps: resolveJumpChain(entries.current, record) },
+        origin: entry.collectionId
+          ? { collectionId: entry.collectionId, itemId: conn.id }
+          : undefined,
         bindHost: forward.bindHost ?? undefined,
         localPort: forward.localPort,
         remoteHost: forward.remoteHost,
@@ -698,6 +759,42 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       });
     },
     [],
+  );
+
+  /**
+   * The collection's header, rewritten: its name, its colour, its health-check opt-out
+   * and — when given — the vocabulary it declares.
+   *
+   * THE SERVER HAD NO WRITE PATH FOR THIS AT ALL, which was not a decision: the local
+   * vault's source has had one since collections were unified, and every screen that
+   * edits a collection is gated on it. So on a server the inline rename dialog opened and
+   * could not save, the collection's `Labels` button was absent, and a collection's own
+   * words — the scope ADR 0016's addendum gives to its members — could be declared
+   * nowhere. The Collections page writes this same header to change a colour
+   * (`patchHeader`), so the path existed and only this end of it was missing.
+   *
+   * SPREAD AND NOT REBUILT. `personal` marks the auto-provisioned collection and is how
+   * Personal is found at all; `folders` is the shared structure. A header assembled field
+   * by field here would drop both, which is the kind of loss that reads as data
+   * corruption and is one missing line.
+   *
+   * `labels` absent keeps what is stored, as the contract says: the rename dialog sends
+   * no vocabulary and must not clear one.
+   */
+  const renameCollection = useCallback<NonNullable<ConnectionsSource['renameCollection']>>(
+    async (id, name, color, hc, labels) => {
+      if (!publicKey || !privateKey) throw new Error('session keys unavailable');
+      const { metaKey, header } = await readCollectionHeader(id, publicKey, privateKey);
+      await writeCollectionHeader(id, metaKey, {
+        ...header,
+        name,
+        color,
+        hc,
+        ...(labels !== undefined ? { labels } : {}),
+      });
+      await refresh();
+    },
+    [publicKey, privateKey, refresh],
   );
 
   return {
@@ -711,10 +808,13 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     update,
     reveal,
     writableCollections,
+    renameCollection,
     collections: collectionList,
     readBoard,
     saveBoard,
     execRemote,
+    probeAgents,
+    manageAgents,
     startForward,
     isServerContext: true,
   };

@@ -9,6 +9,9 @@ rm -rf "$HOME/.local/share/rite"
 mkdir -p "$HOME"
 
 export RITE_ADDR="127.0.0.1:1424"
+# The dist on disk is what gets tested, so it has to be newer than the source.
+"$PWD/e2e/dist-fresh.sh"
+
 export RITE_WEB_DIR="$PWD/apps/desktop/dist"
 
 exec "$PWD/target/debug/rite-server"

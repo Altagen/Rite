@@ -16,8 +16,7 @@
  *
  * Nothing in it runs anything. A row that acted on a click would make this a second
  * palette with different rules, and the palette is one chord away.
- *
- * Mirrors `design/mock/desktop.html`, which got it first (ADR 0019).
+
  */
 import { useEffect } from 'react';
 import { useTranslation } from '../i18n/i18n';

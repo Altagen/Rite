@@ -59,7 +59,6 @@ browser — is the reason `e2e/gate.sh` is not one container from end to end.
 | Command | What it covers |
 |---|---|
 | `sh e2e/run-checks.sh` | Rust ↔ browser crypto parity, then the server policies (RBAC, enrollment, collections, health-check, dashboard) — each against a fresh accounts server |
-| `npx playwright test --project=mock` | the UX mock in `design/mock`, opened from disk — no server |
 | `npx playwright test --project=chromium` | the local-vault suite (needs the harness) |
 | `npx playwright test --project=accounts` | server mode on :1422 — **serial**, each test builds on the last, so `-g` on a single one will fail at setup |
 | `npx playwright test --project=proxy` | an attached client through the mux (:1424 → :1423) |
@@ -69,4 +68,8 @@ browser — is the reason `e2e/gate.sh` is not one container from end to end.
 - **The `accounts` and `proxy` projects are stateful and serial.** Running one test with
   `-g` skips the bootstrap it depends on and fails with a 401 that looks like a bug.
 - **Rebuild the frontend after changing it.** `pnpm e2e` serves `apps/desktop/dist` as it
-  finds it. `e2e/gate.sh` does this for you; running Playwright directly does not.
+  finds it, and `e2e/gate.sh` builds it for you while running Playwright directly does
+  not — so every harness server now refuses to start when the bundle on disk is older
+  than `apps/desktop/src`, and names the files that are newer. A run that stops in the
+  first second with `run: pnpm --filter desktop build` is that guard, not a broken
+  harness. `e2e/harness-dist-check.mjs` holds all seven servers to it.

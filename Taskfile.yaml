@@ -25,7 +25,12 @@ tasks:
       # accumulated in a transitive dev dependency without anything reporting them.
       - sh scripts/audit.sh
       - pnpm --filter desktop typecheck
-      - pnpm --filter desktop exec eslint src
+      # `pnpm lint`, which is what CI runs, and NOT a bare `eslint src`: the package
+      # script adds `--max-warnings 0` and `--report-unused-disable-directives`, so the
+      # bare form was the laxer of the two while this task claimed to mirror CI. Three
+      # violations reached the branch through that gap, one of them an effect with no
+      # cleanup — `prefer-const` on a flag nobody reassigns is how that reads.
+      - pnpm lint
 
   # Development
   dev:

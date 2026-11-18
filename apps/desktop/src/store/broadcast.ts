@@ -39,8 +39,7 @@ export const useBroadcast = create<BroadcastState>((set, get) => ({
   targets: [],
   toggle: (tabId, sessions) =>
     set(get().tabId === tabId ? { tabId: null, targets: [] } : { tabId, targets: sessions }),
-  retarget: (tabId, sessions) =>
-    set((s) => (s.tabId === tabId ? { ...s, targets: sessions } : s)),
+  retarget: (tabId, sessions) => set((s) => (s.tabId === tabId ? { ...s, targets: sessions } : s)),
   off: () => set({ tabId: null, targets: [] }),
 }));
 

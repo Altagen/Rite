@@ -158,8 +158,11 @@ impl Database {
                 25,
                 include_str!("../migrations/025_known_hosts_per_member.sql"),
             ),
+            (26, include_str!("../migrations/026_user_marks.sql")),
+            (27, include_str!("../migrations/027_vault_documents.sql")),
+            (28, include_str!("../migrations/028_instance_labels.sql")),
             // Future migrations go here:
-            // (19, include_str!("../migrations/019_another_feature.sql")),
+            // (29, include_str!("../migrations/029_another_feature.sql")),
         ];
 
         // Expected latest version
@@ -708,11 +711,24 @@ impl Database {
         &self,
         conns: &[(String, Vec<u8>, Vec<u8>)],
         collection_keys: &[(String, String, Option<String>)],
+        // Documents sealed directly with the master key (`vault_documents`): a name on a
+        // conversation, the instance vocabulary. Re-sealed in this same transaction,
+        // because a password change that left them behind would make them unreadable.
+        documents: &[(String, String)],
         new_hash: &str,
         new_salt: &[u8],
     ) -> Result<()> {
         let now = chrono::Utc::now().timestamp_millis();
         let mut tx = self.pool.begin().await?;
+        for (name, blob) in documents {
+            sqlx::query(
+                "UPDATE vault_documents SET blob = ?1, updated_at = unixepoch() WHERE name = ?2",
+            )
+            .bind(blob)
+            .bind(name)
+            .execute(&mut *tx)
+            .await?;
+        }
         for (collection_id, meta, items) in collection_keys {
             sqlx::query(
                 "UPDATE collection_members SET protected_meta_key = ?1, protected_items_key = ?2 \
@@ -974,7 +990,14 @@ mod tests {
 
         // A fresh DB migrates all the way to the latest schema (each applied
         // migration records its version).
-        assert_eq!(db.get_schema_version().await.unwrap(), 25);
+        //
+        // PINNED AT A LITERAL, and that is the second half of what caught a real defect.
+        // `026_user_marks.sql` was added and never registered in the list above, so this
+        // assertion kept agreeing with 25 and passing while a table existed in the
+        // repository and in no database. It moves with the list now, and
+        // `e2e/migrations-registered-check.mjs` holds the list against the folder — two
+        // independent assertions, which is what it took.
+        assert_eq!(db.get_schema_version().await.unwrap(), 28);
     }
 
     #[test]
@@ -1031,14 +1054,14 @@ mod tests {
 
         // First open runs every migration to the latest version.
         let db1 = Database::new(&db_path).await.unwrap();
-        assert_eq!(db1.get_schema_version().await.unwrap(), 25);
+        assert_eq!(db1.get_schema_version().await.unwrap(), 28);
         drop(db1);
 
         // Reopening the SAME vault must be a clean no-op: without the recorded
         // versions the runner would re-apply non-idempotent DDL (`ADD COLUMN` →
         // "duplicate column") and fail — the exact desktop second-launch bug.
         let db2 = Database::new(&db_path).await.unwrap();
-        assert_eq!(db2.get_schema_version().await.unwrap(), 25);
+        assert_eq!(db2.get_schema_version().await.unwrap(), 28);
     }
 
     #[tokio::test]
@@ -1096,7 +1119,7 @@ mod tests {
                     .await
                     .unwrap()
             });
-            assert_eq!(version, 25, "opener {i} left the schema at {version}");
+            assert_eq!(version, 28, "opener {i} left the schema at {version}");
         }
     }
 

@@ -245,6 +245,11 @@ interface LayoutsState {
   /** Write `[terminal] newTabCwd`, or remove it with `null`. The document is the one
    *  place the value lives, so Settings edits it here rather than holding a copy. */
   setNewTabCwd: (where: string | null) => Promise<void>;
+  /** Write `[terminal] copyMode`, or remove it with `null` to fall back to the shipped
+   *  convention. Same arrangement as `setNewTabCwd`, and for the same reason: one value,
+   *  one home, and Settings is a way of writing it rather than a second place to keep it.
+   *  The document was never meant to be edited by hand — it is what an export carries. */
+  setCopyMode: (mode: FileCopyMode | null) => Promise<void>;
   /** Flip the reader's switch, then re-read. */
   setEnabled: (enabled: boolean) => Promise<void>;
   /** Flip this machine's support, then re-read. Switching away from the account does not
@@ -411,6 +416,10 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
     await get().save(setTerminalValue(get().text, 'newTabCwd', where));
   },
 
+  setCopyMode: async (mode: FileCopyMode | null) => {
+    await get().save(setTerminalValue(get().text, 'copyMode', mode));
+  },
+
   save: async (text: string) => {
     const parse = parseLayoutFile(text);
     // The text is saved even when it does not parse: it is the user's document, and
@@ -427,6 +436,9 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
       text,
       presets: parse.error ? get().presets : resolvePresets(parse),
       layouts: parse.error ? get().layouts : parse.layouts,
+      // Every field of the parse, re-listed — which is why one of them went missing the
+      // first time: a rename wrote its block to the file and this set put the old marks
+      // back, so the name appeared and was gone by the next render.
       copyMode: parse.error ? get().copyMode : (parse.terminal.copyMode ?? null),
       newTabCwd: parse.error ? get().newTabCwd : (parse.terminal.newTabCwd ?? null),
       error: parse.error,

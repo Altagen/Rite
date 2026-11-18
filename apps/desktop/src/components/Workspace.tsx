@@ -7,13 +7,13 @@
  * serves the local master-password vault and the accounts session (ADR 0014).
  */
 
-import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback, type ReactNode } from 'react';
 import { useShortcut } from '../shortcuts/useShortcut';
 import { askConfirm } from '../utils/confirmPrompt';
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
 import { disposeAllPanes, paneKind } from '../panes/registry';
-import { planLayout, type Layout, type TabPlan } from '../store/layoutsFormat';
+import { planLayout, NEW_TAB_CWD_HOME, type Layout, type TabPlan } from '../store/layoutsFormat';
 // Reading a live pane tree back into a plan, so a duplicate goes through the same
 // opener a layout does rather than a second tree-walker.
 import { planFromTree } from '../store/tabPlan';
@@ -86,6 +86,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { AnyPaneNode, SplitDirection, Tab, type SplitTarget } from '../types/pane';
 import {
   createTerminalPane,
+  createAgentPane,
   splitPane,
   closePane,
   setFocusedPane,
@@ -96,6 +97,21 @@ import {
   extractPane,
   reorganizePane,
 } from '../utils/paneTree';
+import { AgentManager } from './AgentManager';
+import { offersFrom } from '../store/labelsFormat';
+import { LabelManager, type LabelTarget } from './LabelManager';
+import { acceptedVocab, formatVocab, type VocabWord } from '../store/labelsFormat';
+import { useInstanceLabels } from '../store/instanceLabels';
+import { useMarks } from '../store/marks';
+import {
+  agentResumeArgv,
+  agentResumeCmd,
+  agentOpenFileCmd,
+  agentStartArgv,
+  agentStartCmd,
+  type DiscoveredConversation,
+  type ShippedAdapter,
+} from '../utils/agentAdapters';
 import riteLandscape from '../assets/rite.png';
 
 /**
@@ -185,8 +201,7 @@ export function Workspace({
   // Sidebar state
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   // Whether the pointer is near the left edge, which is the only thing that shows the
-  // reveal arrow for a collapsed library (see the arrow below, and `.side-rail` in
-  // design/mock/rite.css — the mock has read this way all along).
+  // reveal arrow for a collapsed library (see the arrow below).
   const [nearLeftEdge, setNearLeftEdge] = useState(false);
   // Focus mode (client/native only): hide the header so terminals fill the screen. `active` + the
   // auto-collapse-sidebar preference live in a small store; `reveal` is local (hover-to-peek).
@@ -258,7 +273,17 @@ export function Workspace({
   // and the create-into-collection default for the machine form.
   const [openCollectionId, setOpenCollectionId] = useState<string | null>(null);
   const [openMachineId, setOpenMachineId] = useState<string | null>(null);
-  const [mainView, setMainView] = useState<'terminal' | 'collection' | 'machine'>('terminal');
+  const [mainView, setMainView] = useState<'terminal' | 'collection' | 'machine' | 'agents'>(
+    'terminal',
+  );
+  // Which machine the agent manager is looking at. Lifted out of the view so leaving it
+  // and coming back does not throw away a choice — and an answer that cost a round trip
+  // is kept by the view itself, keyed by the same id.
+  const [agentMachineId, setAgentMachineId] = useState<string | null>(null);
+  // The manager is OPENED, like the mock's: a toolbar button opens it and a closable tab
+  // appears in the strip. Not a tab that is always there — this view is somewhere people
+  // go, and a permanent chip for it would sit next to the terminals all day.
+  const [agentsOpen, setAgentsOpen] = useState(false);
   const [membersCollectionId, setMembersCollectionId] = useState<string | null>(null);
   const [boardCollectionId, setBoardCollectionId] = useState<string | null>(null);
   const [formDefaultCollectionId, setFormDefaultCollectionId] = useState<string | null>(null);
@@ -516,8 +541,8 @@ export function Workspace({
   const [installedShells, setInstalledShells] = useState<string[]>([]);
 
   // The shells this picker offers. One list for the whole app (`utils/shells.ts`),
-  // which is also the mock's (design/mock/desktop.html SHELLS) — this is the second
-  // time these two have drifted, and last time it was the names and the icons.
+  // which was two lists until they drifted twice — the names and the icons, the
+  // last time.
   const shells = SHELL_CANDIDATES;
 
   // Store Quick SSH connection info for later saving
@@ -792,6 +817,349 @@ export function Workspace({
   };
 
   /**
+   * Resume a conversation: one session whose program IS the adapter's resume line.
+   *
+   * Not `handleRunInPane`. That one opens a shell and hands it a command once the pane
+   * can claim it, which is right for `docker logs` and wrong here: ADR 0022 §7.1 makes
+   * the resume line the program the channel runs, because a shell discards queued input
+   * while it sets the tty up. So the command travels with `connect`, and the pane that
+   * holds it is an agent pane — which is what gives it the tool's chip and the one
+   * action that belongs to an agent, its conversation id.
+   */
+  const handleResumeAgent = async (
+    machine: ConnectionInfo | null,
+    adapter: ShippedAdapter,
+    conv: DiscoveredConversation,
+  ) => {
+    try {
+      // A null machine is THIS computer, and its session is a local PTY running the
+      // program — argv rather than a command line, because `execvp` takes it as written
+      // and a project path with a space in it is data. The SSH half names the program at
+      // the channel for the same reason; only the transport differs.
+      const sessionId = machine
+        ? await conns.connect(machine, agentResumeCmd(adapter, conv.id))
+        : await Backend.Terminal.connectLocalProgram(agentResumeArgv(adapter, conv.id));
+      const session: TerminalSession = {
+        id: sessionId,
+        connectionId: machine?.id ?? 'local',
+        connectionName: machine?.name ?? adapter.name,
+      };
+      const pane = createAgentPane(session, {
+        toolId: adapter.id,
+        toolName: adapter.name,
+        conversationId: conv.id,
+        // The project is what the tab is called, and a listing does not always give one.
+        project: conv.project ?? conv.label ?? conv.id,
+        // Only when the path says it: Grok's decodes exactly, Claude's slug does not.
+        cwd: conv.project?.startsWith('/') ? conv.project : undefined,
+        // Absent means this computer, which needs no name on screen.
+        machine: machine?.name,
+      });
+      const tab: Tab = { id: crypto.randomUUID(), name: adapter.name, paneTree: pane };
+      setTabGroups((prev) => [...prev, tab]);
+      setActiveTabId(tab.id);
+      // The manager covers the workspace, so the pane it just opened would be behind it.
+      setMainView('terminal');
+    } catch (error) {
+      const msg =
+        typeof error === 'string'
+          ? error
+          : error instanceof Error
+            ? error.message
+            : t('ws.errConnect');
+      if (msg === 'cancelled' || msg.includes('Disconnect')) return;
+      setToastType('error');
+      setToastMessage(msg);
+    }
+  };
+
+  /**
+   * Start a conversation: the same pane as a resumed one, with nothing to resume.
+   *
+   * ONE PATH FOR BOTH, which is why this is forty lines and not a second feature. A new
+   * conversation is the tool run with no arguments in a directory — the pane, the chip,
+   * the tab and the local-versus-SSH split are all the resume path's, so only the command
+   * differs. What a listing cannot give it gives here instead: the working directory is
+   * the one thing the person named, so the pane header carries it rather than guessing.
+   */
+  /**
+   * Every label word on offer, each marked with where it comes from.
+   *
+   * ONE COMPUTATION FOR BOTH DIALOGS, so a word offered on a machine and a word offered on
+   * a collection cannot come from two different unions. Two sources today — what the
+   * collections DECLARE, and what is already in use — and the instance's public list joins
+   * them when it exists, without either dialog changing.
+   *
+   * `offersFrom` keeps the first spelling it sees, so the declared list is read first: a
+   * word a collection agreed on is offered the way the collection wrote it, not the way
+   * somebody happened to type it on a machine afterwards.
+   */
+  /**
+   * A WORD IS A WORD, WHEREVER IT WAS LAST USED.
+   *
+   * The marks document is read here and not only in the agent manager, because the
+   * vocabulary offered on a MACHINE and the vocabulary offered on a CONVERSATION were two
+   * separate pools: a word put on a machine was never offered on a conversation, and the
+   * reverse. The scope decides WHO MAY READ a word; it has never decided what the word
+   * may be put on, and splitting the offers by the kind of thing being labelled made the
+   * picker forget half of what this person already uses.
+   */
+  /**
+   * WHETHER THERE IS A KEY, which both documents below are read with — and read AGAIN
+   * whenever the answer changes.
+   *
+   * Reading once was the bug. The workspace renders before any vault is open
+   * (base-first, ADR 0014), so these two were fetched with no key, cached their refusal
+   * as `loaded`, and nothing re-read them when the vault opened a moment later. The
+   * screen then behaved for the rest of the session as though there were no vault: the
+   * agent manager offered no way to name anything, and the picker had no words — on a
+   * window whose vault was wide open. Found by the owner, on the build I handed him.
+   *
+   * Keyed on a boolean rather than on a counter, so it fires twice in a session rather
+   * than on every render: once at mount, once when a vault opens or shuts. A lock is the
+   * same event in the other direction and must also re-read — what was unsealed has to
+   * leave the screen with the key that opened it.
+   */
+  const hasKey = conns.isServerContext === true ? !!serverKeys.userKey : !isLocked && !isFirstRun;
+
+  const marks = useMarks((st) => st.marks);
+  const loadMarks = useMarks((st) => st.load);
+  useEffect(() => {
+    void loadMarks();
+  }, [loadMarks, hasKey]);
+
+  const instanceWords = useInstanceLabels((st) => st.words);
+  const loadInstanceWords = useInstanceLabels((st) => st.load);
+  useEffect(() => {
+    void loadInstanceWords();
+  }, [loadInstanceWords, hasKey]);
+
+  /**
+   * Every word that has been DECLARED with a colour, nearest scope first.
+   *
+   * What a chip resolves its colour against, anywhere a label is drawn. Without it `pci`
+   * would be the chosen red in the editor that declared it and the derived colour on every
+   * card — which is the one thing choosing a colour is for.
+   *
+   * The collections come first, because the narrower scope is the more specific statement:
+   * a collection that declared `pci` green means it for its own machines.
+   */
+  const declaredWords = useMemo(
+    () => [
+      ...(conns.collections ?? []).flatMap((c) =>
+        (c.labels ?? []).map((w) => (typeof w === 'string' ? { label: w } : w)),
+      ),
+      ...instanceWords,
+    ],
+    [conns.collections, instanceWords],
+  );
+
+  /** The collection whose own vocabulary is open, or null. */
+  const [labelsCollection, setLabelsCollection] = useState<string | null>(null);
+
+  // AND ESCAPE CLOSES IT, which is the other half of taking the key away from the machine
+  // form underneath: a dialog that ignores Escape while the layer below acts on it is how
+  // a half-filled form got thrown away. Topmost layer, so this one runs and the form's
+  // stands down (`escapeDisabled` on `<ConnectionForm>`).
+  useEffect(() => {
+    if (labelsCollection === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setLabelsCollection(null);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [labelsCollection]);
+
+  /**
+   * The one scope the collection dialog writes: that collection's own words.
+   *
+   * One target, so the manager draws no selector — the surface already said which
+   * collection, which is the job a selector was doing badly.
+   */
+  const collectionLabelTargets: LabelTarget[] = useMemo(() => {
+    const col = (conns.collections ?? []).find((c) => c.id === labelsCollection);
+    if (!col) return [];
+    return [
+      {
+        id: col.id,
+        name: col.name,
+        words: acceptedVocab(col.labels ?? []),
+        save: conns.renameCollection
+          ? async (words: VocabWord[]) => {
+              // A vocabulary write is a HEADER write, so the name, the colour and the
+              // opt-out go back as they stand: the core merges what it is given and keeps
+              // what it is not, and a stale name here would rename the collection.
+              await conns.renameCollection!(
+                col.id,
+                col.name,
+                col.color ?? null,
+                col.hc ?? null,
+                formatVocab(words),
+              );
+              await fetchConnections();
+            }
+          : undefined,
+      },
+    ];
+  }, [conns, labelsCollection, fetchConnections]);
+
+  const labelOffers = useMemo(
+    () => [
+      // INHERITANCE RUNS ONE WAY: the instance's words are offered inside every
+      // collection, and a collection's own never travel up. Offered first, because
+      // `offersFrom` keeps the first spelling it sees — a word declared for the whole
+      // instance is offered the way it was declared.
+      ...offersFrom([instanceWords], 'instance'),
+      ...offersFrom(
+        [
+          ...(conns.collections ?? []).map((c) => c.labels),
+          ...conns.connections.map((c) => c.labels),
+        ],
+        'collection',
+      ).filter((o) => !instanceWords.some((w) => w.label.toLowerCase() === o.label.toLowerCase())),
+      // AND THE WORDS ON CONVERSATIONS, which live in the marks document. Offering one on
+      // a machine puts it in that collection's sealed item, where its members can read it
+      // — the same thing typing it there would do, and the field always accepted any
+      // word, so this adds a click rather than an exposure.
+      ...offersFrom([marks.flatMap((m) => m.labels ?? [])], 'personal'),
+    ],
+    [instanceWords, conns.collections, conns.connections, marks],
+  );
+
+  /**
+   * WHERE A WORD IS DECLARED for the machine a conversation was read on.
+   *
+   * The shell answers it because it holds the collections and owns the dialog. Three
+   * cases, and the third is why this returns a shape rather than a callback:
+   *
+   *   - a machine in a collection this person may write → that collection's own
+   *     vocabulary, opened ABOVE the mark dialog, which keeps every character typed in it;
+   *   - a machine in a collection they may only read → the name, and no way in: a link
+   *     that leads to a refusal is what the picker's create action was;
+   *   - this machine, which is in no collection → the vault's own list, in Settings. A
+   *     page, not a dialog, so reaching it would throw the dialog away: a sentence.
+   *
+   * AND TWICE IT SAYS NOTHING AT ALL, because a pointer is worth less than silence when it
+   * is wrong. `Settings → Labels` is drawn from a rail entry marked `local` and `vault`
+   * (`Settings.tsx`), so in a SERVER context that page does not exist — the words there
+   * belong to the instance and are administered from the instance panel, by somebody who
+   * may not be this person. And a collection id that matches nothing yet means the list
+   * has not arrived, not that the machine has no collection: naming Settings on the first
+   * render would be a sentence that changes once the fetch lands.
+   */
+  const declareFor = useCallback(
+    (machineId: string) => {
+      const machine = conns.connections.find((c) => c.id === machineId);
+      const collection = machine?.collectionId
+        ? (conns.collections ?? []).find((c) => c.id === machine.collectionId)
+        : undefined;
+      // Not yet loaded — say nothing rather than something that will change.
+      if (machine?.collectionId && !collection) return undefined;
+      if (!collection) {
+        return conns.isServerContext === true ? undefined : { where: t('labels.settingsPlace') };
+      }
+      const writable = (conns.writableCollections ?? []).some((c) => c.id === collection.id);
+      return {
+        where: collection.name,
+        open: writable ? () => setLabelsCollection(collection.id) : undefined,
+      };
+    },
+    [conns.connections, conns.collections, conns.writableCollections, conns.isServerContext, t],
+  );
+
+  /** The last segment of a path, which is what a tab holding one file should be called. */
+  const fileName = (path: string) => path.split('/').filter(Boolean).pop() ?? path;
+
+  /**
+   * Open one of the files the context panel named, in a pane on that machine.
+   *
+   * THE WHOLE EDITING STORY (ADR 0022 §6). Rite reads skills, commands and hooks and
+   * never writes them; a person who wants to change one does it the way they already
+   * would, in their own editor, under the account they already use there. A plain
+   * terminal pane, not an agent pane: what runs in it is an editor and the pane should
+   * not claim a conversation it does not have.
+   */
+  const handleOpenAgentFile = async (machine: ConnectionInfo | null, path: string) => {
+    const cmd = agentOpenFileCmd(path);
+    if (!cmd) return;
+    try {
+      const sessionId = machine
+        ? await conns.connect(machine, cmd)
+        : // Through a shell, because `$EDITOR` is the shell's to expand and only that
+          // machine knows what it is set to.
+          await Backend.Terminal.connectLocalProgram(['sh', '-lc', cmd], NEW_TAB_CWD_HOME);
+      const session: TerminalSession = {
+        id: sessionId,
+        connectionId: machine?.id ?? 'local',
+        connectionName: machine?.name ?? fileName(path),
+      };
+      const tab: Tab = {
+        id: crypto.randomUUID(),
+        // Named by the FILE, since that is what the pane is for.
+        name: fileName(path),
+        paneTree: createTerminalPane(session, true),
+      };
+      setTabGroups((prev) => [...prev, tab]);
+      setActiveTabId(tab.id);
+      setMainView('terminal');
+    } catch (error) {
+      setToastType('error');
+      setToastMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const handleNewAgent = async (
+    machine: ConnectionInfo | null,
+    adapter: ShippedAdapter,
+    cwd: string,
+  ) => {
+    try {
+      const sessionId = machine
+        ? await conns.connect(machine, agentStartCmd(adapter, cwd))
+        : // `home` and not an empty string: the word is resolved on the machine the shell
+          // starts on, which is the only side that knows where that is.
+          await Backend.Terminal.connectLocalProgram(
+            agentStartArgv(adapter),
+            cwd || NEW_TAB_CWD_HOME,
+          );
+      const session: TerminalSession = {
+        id: sessionId,
+        connectionId: machine?.id ?? 'local',
+        connectionName: machine?.name ?? adapter.name,
+      };
+      const pane = createAgentPane(session, {
+        toolId: adapter.id,
+        toolName: adapter.name,
+        // No conversation id, because the tool has not written one yet: it is minted
+        // inside the session, and a handle invented here would name nothing. The pane
+        // shows the tool and the directory until the next probe finds the transcript.
+        conversationId: '',
+        // The directory is what this is about, so it is what the tab is called.
+        project: cwd || adapter.name,
+        cwd: cwd || undefined,
+        machine: machine?.name,
+      });
+      const tab: Tab = { id: crypto.randomUUID(), name: adapter.name, paneTree: pane };
+      setTabGroups((prev) => [...prev, tab]);
+      setActiveTabId(tab.id);
+      setMainView('terminal');
+    } catch (error) {
+      const msg =
+        typeof error === 'string'
+          ? error
+          : error instanceof Error
+            ? error.message
+            : t('ws.errConnect');
+      if (msg === 'cancelled' || msg.includes('Disconnect')) return;
+      setToastType('error');
+      setToastMessage(msg);
+    }
+  };
+
+  /**
    * Run a machine's pre-connect hook, and say whether the connection may proceed.
    *
    * A machine with no hook passes without a modal. `gate` remembers what a hook
@@ -963,8 +1331,7 @@ export function Workspace({
     // another computer, so there is nothing here to follow and the home directory answers
     // instead — the same as no pane at all. Passing its id would have the server find no
     // local session and start the shell wherever Rite stands, which is nobody's directory.
-    const following =
-      standing?.session.connectionId === 'local' ? standing.session.id : undefined;
+    const following = standing?.session.connectionId === 'local' ? standing.session.id : undefined;
     const start = newTabCwdStart({
       asked: newTabCwd,
       runsHere: isNativeShell(),
@@ -1109,8 +1476,9 @@ export function Workspace({
       // The pane being cut, so its shell's directory is where the new one opens. A
       // terminal multiplexer does this and it is the whole of the "working directory per
       // tab" item: splitting leaves you where you were.
-      const cutPane = getAllPanes(tabGroups.find((t) => t.id === activeTabId)?.paneTree ?? null)
-        .find((pane) => pane.id === paneId);
+      const cutPane = getAllPanes(
+        tabGroups.find((t) => t.id === activeTabId)?.paneTree ?? null,
+      ).find((pane) => pane.id === paneId);
       // The session is named whatever it is, local or SSH, and the SERVER decides whether
       // it can answer: `local_cwd` matches on a local session and returns nothing for
       // anything else. A matching check here would be the same rule in two places — and
@@ -1650,7 +2018,7 @@ export function Workspace({
   // terminal one, `relative z-10` like the dashboard overlay and later in the DOM,
   // painted over the dashboard it has nothing to say about.
   const viewTabs =
-    openCollectionId || openMachine ? (
+    openCollectionId || openMachine || agentsOpen ? (
       <>
         {openCollectionId && (
           <div
@@ -1681,6 +2049,52 @@ export function Workspace({
               onClick={handleCloseCollection}
               className="rounded p-0.5 text-muted-foreground hover:bg-muted"
               aria-label={t('ws.closeCollection')}
+            >
+              <svg
+                className="h-3.5 w-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+        {agentsOpen && (
+          <div
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
+              mainView === 'agents'
+                ? 'bg-background text-foreground'
+                : 'text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            <button
+              onClick={() => setMainView('agents')}
+              className="flex items-center gap-1.5"
+              data-testid="nav-agents"
+            >
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <rect x="4" y="7" width="16" height="12" rx="2" />
+                <path strokeLinecap="round" d="M12 7V4M9 13h.01M15 13h.01" />
+              </svg>
+              <span>{t('agent.title')}</span>
+            </button>
+            <button
+              onClick={() => {
+                setAgentsOpen(false);
+                if (mainView === 'agents') setMainView('terminal');
+              }}
+              className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+              aria-label={t('agent.close')}
+              data-testid="nav-agents-close"
             >
               <svg
                 className="h-3.5 w-3.5"
@@ -1743,6 +2157,7 @@ export function Workspace({
           scrollWidth measurement is meaningful and the pastille stays pinned right. */}
       <header
         ref={appbarRef}
+        data-testid="app-bar"
         className={`m-appbar${navActions?.length ? ' m-appbar-fit' : ''}${
           focusActive
             ? ` fixed left-0 right-0 top-0 z-[55] shadow-lg transition-transform duration-200 ${
@@ -1833,6 +2248,33 @@ export function Workspace({
           >
             <IconBolt className="h-4 w-4" />
             <span className="hidden md:inline">{t('ws.quickSsh')}</span>
+          </button>
+        )}
+
+        {/* The agent manager (ADR 0022 §4). A view, so the button OPENS it and the tab
+            strip then carries a closable chip for it — the mock's arrangement, and the
+            reason the chip is not permanent. */}
+        {toolbarPrefs.agents && (
+          <button
+            onClick={() => {
+              setAgentsOpen(true);
+              setMainView('agents');
+            }}
+            className="m-btn m-btn-sm"
+            title={t('agent.open')}
+            data-testid="toolbar-agents"
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <rect x="4" y="7" width="16" height="12" rx="2" />
+              <path strokeLinecap="round" d="M12 7V4M9 13h.01M15 13h.01" />
+            </svg>
+            <span className="hidden md:inline">{t('agent.title')}</span>
           </button>
         )}
 
@@ -2208,9 +2650,17 @@ export function Workspace({
             with the collection view overlaid when its tab is active. */}
         <div className="relative flex min-w-0 flex-1 flex-col">
           <div className="relative flex min-h-0 flex-1 flex-col">
-            {/* Collection view overlay (kept above the terminal when its tab is active) */}
+            {/* Collection view overlay (kept above the terminal when its tab is active).
+                `z-20` AND NOT `z-10`, which is a defect this found rather than a
+                preference: the terminal's own tab strip is `relative z-10` with `pb-3
+                overflow-y-visible`, so at equal z it painted over the top band of this
+                overlay — and the whole action row underneath (Board, Members, Check now)
+                could not be clicked while a collection was open. `elementFromPoint` at
+                each button's centre answered the tab strip, at every window width.
+                Nothing covers the Terminal/Collection switch: that one lives outside this
+                container. */}
             {openCollectionId && mainView === 'collection' && (
-              <div className="absolute inset-0 z-10 overflow-hidden bg-background">
+              <div className="absolute inset-0 z-20 overflow-hidden bg-background">
                 <CollectionView
                   key={openCollectionId}
                   name={openCollectionName}
@@ -2219,6 +2669,14 @@ export function Workspace({
                   hc={openCol?.hc}
                   machines={openCollectionMachines}
                   folders={openCol?.folders}
+                  declared={declaredWords}
+                  // Only for a collection this reader may write: a viewer sees the words on
+                  // the machines and has nothing to declare.
+                  onOpenLabels={
+                    conns.renameCollection && openCollectionWritable
+                      ? () => setLabelsCollection(openCollectionId)
+                      : undefined
+                  }
                   canWrite={openCollectionWritable}
                   onConnect={handleConnect}
                   onEdit={handleEditConnection}
@@ -2257,7 +2715,7 @@ export function Workspace({
 
             {/* Machine dashboard overlay (its own view when a machine tab is active) */}
             {openMachine && mainView === 'machine' && (
-              <div className="absolute inset-0 z-10 overflow-hidden bg-background">
+              <div className="absolute inset-0 z-20 overflow-hidden bg-background">
                 <MachineDashboard
                   key={openMachine.id}
                   connection={openMachine}
@@ -2280,6 +2738,31 @@ export function Workspace({
             <ErrorBoundary level="feature" name="TerminalManager">
               <TerminalManager
                 viewTabs={viewTabs}
+                /* The manager goes through the pane area rather than over the whole
+                   component: its header carries its controls, and an `inset-0` overlay
+                   puts that header under the tab strip, which paints later and wins. */
+                viewOverlay={
+                  agentsOpen && mainView === 'agents' ? (
+                    <ErrorBoundary level="feature" name="AgentManager">
+                      <AgentManager
+                        connections={conns.connections}
+                        machineId={agentMachineId}
+                        onPickMachine={setAgentMachineId}
+                        probeAgents={conns.probeAgents}
+                        manageAgents={conns.manageAgents}
+                        declared={declaredWords}
+                        vocabulary={labelOffers}
+                        declareFor={declareFor}
+                        onResume={handleResumeAgent}
+                        onOpenFile={handleOpenAgentFile}
+                        onNew={(machine, adapter, cwd) =>
+                          void handleNewAgent(machine, adapter, cwd)
+                        }
+                        mode={serverKeys.mode}
+                      />
+                    </ErrorBoundary>
+                  ) : undefined
+                }
                 tabGroups={tabGroups}
                 activeTabId={activeTabId}
                 onSplitPane={handleSplitPane}
@@ -2315,6 +2798,7 @@ export function Workspace({
       {/* Connection Form Modal */}
       {showForm && (
         <ConnectionForm
+          labelOffers={labelOffers}
           connection={editingConnection}
           prefillData={connectionFormPrefill}
           create={conns.create}
@@ -2322,6 +2806,11 @@ export function Workspace({
           reveal={conns.reveal}
           jumpCandidates={conns.connections}
           collectionTargets={conns.writableCollections}
+          // The collection's own vocabulary, over the form rather than instead of it.
+          onDeclareLabels={conns.renameCollection ? (id) => setLabelsCollection(id) : undefined}
+          // The vocabulary dialog is layered over this form; Escape is its key, not
+          // the form's, or dismissing the dialog would discard everything typed here.
+          escapeDisabled={labelsCollection !== null}
           defaultCollectionId={formDefaultCollectionId}
           defaultFolder={formDefaultFolder}
           onClose={() => {
@@ -2551,6 +3040,9 @@ export function Workspace({
           initialHc={collectionEdit.hc}
           onClose={() => setCollectionEdit(null)}
           onSaved={fetchConnections}
+          // No vocabulary on this path, so nothing is sent for it and the stored words
+          // are kept — the words are declared in the label manager (Settings → Labels),
+          // where a scope selector replaces what used to be a second editor here.
           onPersist={
             conns.renameCollection && collectionEdit.id
               ? (name, color, hc) => conns.renameCollection!(collectionEdit.id!, name, color, hc)
@@ -2632,6 +3124,44 @@ export function Workspace({
           connections={conns.connections ?? []}
           libraryReadable={!isLocked}
         />
+      )}
+
+      {/* A COLLECTION'S OWN WORDS, on the collection — in both shells, because a
+          collection belongs to its members whether a server is in the picture or not. The
+          instance's list is the half that moves (Settings locally, the admin console on a
+          server), and it shows here as inherited: visible, not editable, so nobody
+          declares `pci` a second time. */}
+      {labelsCollection && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setLabelsCollection(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('labels.field')}
+            className="max-h-[80vh] w-full max-w-3xl overflow-auto rounded-lg border border-border bg-card p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+            data-testid="collection-labels-dialog"
+          >
+            <div className="mb-3 flex items-center gap-2">
+              <h3 className="text-lg font-semibold">{t('labels.field')}</h3>
+              <span className="truncate text-sm text-muted-foreground">
+                {(conns.collections ?? []).find((c) => c.id === labelsCollection)?.name ?? ''}
+              </span>
+              <span className="flex-1" />
+              <button
+                type="button"
+                onClick={() => setLabelsCollection(null)}
+                className="rounded-md border border-border px-2.5 py-1 text-xs"
+                data-testid="collection-labels-close"
+              >
+                {t('dlg.close')}
+              </button>
+            </div>
+            <LabelManager targets={collectionLabelTargets} inherited={instanceWords} />
+          </div>
+        </div>
       )}
 
       {/* Quick SSH Modal */}

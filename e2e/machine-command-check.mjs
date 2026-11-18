@@ -17,8 +17,12 @@
  * Run: node e2e/machine-command-check.mjs
  */
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import {
   shellArg,
+  posixScript,
+  CONTAINERS_CMD,
+  SERVICES_CMD,
   containerShellCmd,
   containerLogsCmd,
   containerRestartCmd,
@@ -174,6 +178,39 @@ check('a unit name arrives as written too', () => {
   const rows = parseServices("a'b.service loaded active running Odd unit");
   assert.equal(rows[0].name, "a'b.service");
   assert.ok(serviceRestartCmd(rows[0].name).includes("'a'\\''b.service'"));
+});
+
+console.log('\nthe shell on the far side is not ours:');
+
+/** Ask a shell to parse a command string without running it. */
+const parses = (shell, cmd) => spawnSync(shell, ['-n', '-c', cmd], { encoding: 'utf8' }).status === 0;
+
+check('a probe command parses as POSIX', () => {
+  // The floor: whatever we send has to be a command before it can be an answer.
+  assert.ok(parses('sh', CONTAINERS_CMD), CONTAINERS_CMD);
+  assert.ok(parses('sh', SERVICES_CMD), SERVICES_CMD);
+});
+
+check('shell syntax never reaches the login shell', () => {
+  // SSH exec hands the string to the ACCOUNT's login shell, and `if … then … fi` is a
+  // parse error in fish. Measured there: the container probe failed outright while the
+  // service probe worked, so the dashboard showed services beside an empty container
+  // list — which reads as "no containers on this host". The syntax goes inside `sh -c`,
+  // where the only thing the login shell has to understand is one quoted word.
+  assert.ok(CONTAINERS_CMD.startsWith("sh -c '"), CONTAINERS_CMD);
+  assert.ok(!CONTAINERS_CMD.startsWith('if '), CONTAINERS_CMD);
+  // fish is the shell that broke it, and it is not installed everywhere this runs.
+  if (spawnSync('fish', ['--version']).status === 0) {
+    assert.equal(spawnSync('fish', ['-c', CONTAINERS_CMD]).status, 0, 'fish could not run it');
+  }
+});
+
+check('posixScript carries a script that contains quotes', () => {
+  // One quoter in this file, so this reads `shellArg`'s rule back through the wrapper —
+  // and reads it by running it, which no expected-string can be wrong about.
+  const run = (shell) => spawnSync(shell, ['-c', posixScript("printf '%s' \"a'b\"")], { encoding: 'utf8' });
+  assert.equal(run('sh').stdout, "a'b");
+  assert.equal(run('bash').stdout, "a'b");
 });
 
 console.log(`\n${passed} checks passed`);

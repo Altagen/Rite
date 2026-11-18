@@ -1,6 +1,6 @@
 {
   "name": "rite",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "private": true,
   "description": "Rust & TypeScript Interface for Terminal Environment",
   "repository": "https://github.com/Altagen/Rite",
@@ -23,10 +23,10 @@
   "devDependencies": {
     "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.4",
-    "@playwright/test": "^1.64.1",
-    "@types/node": "^26.6.5",
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^26.6.6",
     "husky": "^9.1.7",
-    "prettier": "^3.9.10",
+    "prettier": "^3.10.1",
     "typescript": "^5.9.3"
   }
 }

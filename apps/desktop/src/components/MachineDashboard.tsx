@@ -275,7 +275,7 @@ export function MachineDashboard({
   // the Board are untouched — refusing to probe is not refusing the dashboard.
   const mode = useServerSession((s) => s.mode);
   const userWantsProbes = useDisplayPrefs((s) => s.machineProbes);
-  const probes = probeVerdict({ mode, userWants: userWantsProbes });
+  const probes = probeVerdict({ mode, userWants: userWantsProbes, native: isNativeShell() });
   const toggle = (key: 'wide' | 'hidden', id: DashCardId) =>
     setPrefs((p) => {
       const cur = p[key];

@@ -7,8 +7,7 @@
  * Collections to Teams meant Close, then finding the button you had just left. The bar
  * is the emptiest one in the app, so the nav costs nothing to carry, and Close stays
  * exactly where it was for the trip back to the terminals.
- *
- * `design/mock/full-data.js` (`overlayNavHTML`) is the same list in the prototype.
+
  *
  * Two surfaces are deliberately not here:
  *

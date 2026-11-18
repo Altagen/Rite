@@ -248,9 +248,7 @@ test('the same accent twice in a row arrives twice', async ({ page }) => {
   let from = sent.length;
   await compose(page, '^', 'ô');
   await compose(page, '^', 'ô');
-  expect(sent.slice(from).flat(), 'two accents, two characters').toEqual([
-    0xc3, 0xb4, 0xc3, 0xb4,
-  ]);
+  expect(sent.slice(from).flat(), 'two accents, two characters').toEqual([0xc3, 0xb4, 0xc3, 0xb4]);
 
   // And the same through the sequence this engine does not produce.
   from = sent.length;
@@ -330,7 +328,7 @@ test('the guard keeps the composition keys and nothing else', async ({ page }) =
     return seen;
   })()`);
 
-  expect(reached, 'named control keys are xterm\'s, compositions are the guard\'s').toEqual({
+  expect(reached, "named control keys are xterm's, compositions are the guard's").toEqual({
     Tab: true,
     Enter: true,
     Backspace: true,

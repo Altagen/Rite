@@ -4,7 +4,7 @@
  * Modal for application settings configuration
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { RESET_PHRASE } from '../utils/resetPhrase';
 import { RevealToggle } from './RevealToggle';
 import { useSettingsStore } from '../store/settingsStore';
@@ -13,6 +13,7 @@ import { useDisplayPrefs } from '../store/displayPrefs';
 import { useTranslation } from '../i18n/i18n';
 import { KnownHostsList } from './KnownHostsList';
 import { DEFAULT_CLIPBOARD_MODE } from '../utils/terminalClipboard';
+import { FILE_COPY_MODES, type FileCopyMode } from '../store/layoutsFormat';
 import { SplitsModal } from './SplitsModal';
 import { LayoutsModal } from './LayoutsModal';
 import { LayoutCards } from './LayoutCards';
@@ -40,6 +41,8 @@ import { newTabCwdApplies } from '../utils/newTabCwd';
 import { probeVerdict } from '../utils/dashboardProbes';
 import { Backend, type Capabilities } from '../utils/backend';
 import { RiteHttpError } from '../utils/httpError';
+import { useInstanceLabels } from '../store/instanceLabels';
+import { LabelManager, type LabelTarget } from './LabelManager';
 
 /**
  * The two chords that are not in the bindings table, and why.
@@ -75,6 +78,13 @@ interface SettingsProps {
   connections?: { name: string }[];
   /** False when the vault is locked: the names are encrypted and cannot be read. */
   libraryReadable?: boolean;
+  /**
+   * The collections whose vocabularies this screen can show, for the label manager.
+   *
+   * Passed in for the reason `connections` is: which collections exist is a property of
+   * the context, and the accounts shell has none to offer. Absent ⇒ the manager writes the
+   * instance list only, which is the whole of what a window with no library has.
+   */
 }
 
 /**
@@ -102,6 +112,7 @@ type SectionId =
   | 'layouts'
   | 'shell'
   | 'machines'
+  | 'labels'
   | 'security'
   | 'ssh'
   | 'clipboard'
@@ -134,6 +145,20 @@ const RAIL: {
   // the New-terminal button.
   { id: 'shell', i18n: 'settings.sec.shell' },
   { id: 'machines', i18n: 'settings.sec.machines' },
+  // The words declared above the collections.
+  //
+  // `local`, because THE SURFACE FOLLOWS THE OWNER. On a local vault this list is the
+  // person's own, so it belongs with their settings; on a server it is the instance's, so
+  // it belongs in the admin console — which is what ADR 0025 already does for every other
+  // instance setting. A collection's own words are edited on the collection, in both
+  // shells, and that half does not move.
+  //
+  // `vault`, because THE VAULT IS THE LOCAL INSTANCE. The list is sealed under its key,
+  // so with no vault there is nowhere to keep a word — and nothing to put one on either:
+  // no collections, no machines, and a conversation cannot be enriched without a vault
+  // (ADR 0022 §6). The section is absent rather than empty, like the master password and
+  // the danger zone beside it.
+  { id: 'labels', i18n: 'labels.field', local: true, vault: true },
   { id: 'security', i18n: 'settings.security' },
   { id: 'ssh', i18n: 'settings.sec.ssh' },
   { id: 'clipboard', i18n: 'settings.clipboard' },
@@ -199,7 +224,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   const hasVault = useAuthStore((a) => a.isFirstRun) === false;
   // ADR 0019: the toggle below can only narrow the server's answer, so when the server
   // already says no the switch is told it changes nothing rather than pretending to.
-  const probesVerdict = probeVerdict({ mode: serverMode ?? null, userWants: true });
+  const probesVerdict = probeVerdict({ mode: serverMode ?? null, userWants: true, native });
   const probesRefusedByServer = !probesVerdict.allowed && probesVerdict.by === 'server';
   const [shellDraft, setShellDraft] = useState('');
   useEffect(() => {
@@ -217,6 +242,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   const layoutsSupport = useLayouts((st) => st.support);
   /** The copy convention the workspace document asks for; null ⇒ the shipped default. */
   const copyMode = useLayouts((st) => st.copyMode);
+  const setCopyMode = useLayouts((st) => st.setCopyMode);
   const layoutsVerdictNow = useLayouts((st) => st.verdict);
   const layoutsEnabled = useLayouts((st) => st.enabled);
   const layoutsPrefer = useLayouts((st) => st.prefer);
@@ -275,6 +301,39 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
    * in view, so the sections themselves did not have to move.
    */
   const [active, setActive] = useState<SectionId>('appearance');
+  // The instance vocabulary. `null` draft ⇒ nothing typed yet, so Save is not offered —
+  // a button that writes what is already stored invites a round trip that changes nothing.
+  const instanceWords = useInstanceLabels((st) => st.words);
+  const instanceSupport = useInstanceLabels((st) => st.support);
+  const instanceLoaded = useInstanceLabels((st) => st.loaded);
+  const loadInstanceWords = useInstanceLabels((st) => st.load);
+  const saveWords = useInstanceLabels((st) => st.save);
+  useEffect(() => {
+    if (!instanceLoaded) void loadInstanceWords();
+  }, [instanceLoaded, loadInstanceWords]);
+
+  /**
+   * ONE TARGET, because a collection's words are managed on the collection.
+   *
+   * The scope selector used to live here and it was the wrong answer: it did the job the
+   * SURFACE should do, and it put an instance-level list and a per-collection one on one
+   * screen. With a single target the manager draws no selector at all — which is how it
+   * was written, and the reason this needs no change to the component.
+   *
+   * This section is `local` in the rail, so on a server it is not here: there the list is
+   * the instance's and an administrator writes it in the console (ADR 0025).
+   */
+  const labelTargets: LabelTarget[] = useMemo(
+    () => [
+      {
+        id: '@instance',
+        name: t('labels.scopeInstance'),
+        words: instanceWords,
+        save: saveWords,
+      },
+    ],
+    [instanceWords, saveWords, t],
+  );
   // Change master password (local vault): re-keys all connections server-side.
   const [pwReveal, setPwReveal] = useState(false);
   const [pwCurrent, setPwCurrent] = useState('');
@@ -405,7 +464,10 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
-      <div className="mx-4 flex h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-background shadow-xl">
+      <div
+        className="mx-4 flex h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-background shadow-xl"
+        data-testid="settings-dialog"
+      >
         {/* Header */}
         <div className="flex flex-none items-center justify-between border-b border-border px-6 py-4">
           <h2 className="text-xl font-bold">{t('settings.title')}</h2>
@@ -482,6 +544,32 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                 checked={showMemberCount}
                 onChange={setShowMemberCount}
               />
+            </section>
+
+            {/* THE WORDS DECLARED ABOVE THE COLLECTIONS, so one does not have to be
+                redeclared in each. One section in both contexts: an instance keeps a
+                plaintext row every member reads, a local vault a document sealed under its
+                master key — and the client never learns which, because that decision
+                belongs to the side holding the key.
+
+                Inheritance runs ONE WAY. These words are offered inside every collection;
+                a collection's own never travel up, which is why a sensitive word belongs
+                in the collection and not here. */}
+            <section hidden={shown !== 'labels'} className="pb-2">
+              {/* No lede. The scope selector's first entry says "All collections", the
+                  table says what is in it and the count says what is left — a paragraph
+                  above them would be repeating all three. */}
+              <SettingsHead title={t('labels.instanceTitle')} />
+              {/* A LOCKED VAULT IS SAID, NOT DRAWN OVER. The list lives behind its key, so
+                  an empty table here would read as "nothing declared" and a Save would be
+                  refused — which is exactly what shipped once. */}
+              {instanceSupport === 'locked' ? (
+                <p className="text-xs text-amber-500" data-testid="instance-labels-locked">
+                  {t('labels.instanceLocked')}
+                </p>
+              ) : (
+                <LabelManager targets={labelTargets} />
+              )}
             </section>
 
             {/* Machine status (ADR 0017) — a client-side narrowing of the server's health policy. */}
@@ -697,7 +785,10 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                     {fixedStart &&
                       newTabCwdDraft.trim() !== '' &&
                       !newTabCwdDraft.trim().startsWith('/') && (
-                        <p className="mt-1 text-xs text-amber-500" data-testid="new-tab-cwd-refused">
+                        <p
+                          className="mt-1 text-xs text-amber-500"
+                          data-testid="new-tab-cwd-refused"
+                        >
                           {t('settings.newTabCwdAbsolute')}
                         </p>
                       )}
@@ -875,7 +966,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                 {/* Quick SSH is the server's to forbid (`quickSshAllowed`), and when it does the
                   row says so instead of vanishing: the preference is still this person's, the
                   button stays hidden either way, and someone looking for it gets an answer. The
-                  probe-cards row above answers the same way, and so does design/mock/web.html. */}
+                  probe-cards row above answers the same way. */}
                 <SettingsToggle
                   title={t('settings.toolbarQuickSsh')}
                   hint={
@@ -894,6 +985,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                 />
                 {hasWorkspaceFile &&
                   toolbarRow('layouts', 'settings.toolbarLayouts', 'settings.toolbarLayoutsDesc')}
+                {toolbarRow('agents', 'settings.toolbarAgents', 'settings.toolbarAgentsDesc')}
               </div>
             </section>
 
@@ -941,43 +1033,56 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                     />
                   </SettingsRow>
                 )}
-
               </div>
             </section>
 
             {/* Clipboard settings */}
             <section hidden={shown !== 'clipboard'} className="pb-2">
               <SettingsHead title={t('settings.clipboard')} />
-              {/* Shown, not offered. The convention lives in the workspace document so it
-                  travels between machines (ADR 0023, addendum) — a dropdown here would be
-                  a second place to set one value, and the file would win or lose
-                  depending on which was touched last. The row says what is in force, why,
-                  and what it means. */}
+              {/* Set here, kept in the workspace document. This row used to be read-only,
+                  on the argument that a control here would be a second place to set one
+                  value — but `newTabCwd` shipped the opposite arrangement in 0.2.8, and
+                  two keys in one file behaving differently is the real trap. The document
+                  is not an editing surface: it is what an export carries between machines,
+                  and the binary owns it. So one value, one home, and Settings is a way of
+                  writing it. The file still wins when it is the only thing that was
+                  touched, because this writes the file. */}
               <SettingsRow
                 title={t('settings.copyMode')}
-                hint={
-                  copyMode
-                    ? t('settings.copyModeFile')
-                    : t('settings.copyModeDefault')
-                }
+                hint={t(copyMode ? 'settings.copyModeFile' : 'settings.copyModeDefault')}
               >
-                <div className="max-w-[22rem] text-right">
-                  <code
-                    className="font-mono text-sm text-foreground"
-                    data-testid="copy-mode"
-                  >
-                    {copyMode ?? DEFAULT_CLIPBOARD_MODE}
-                  </code>
-                  <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                    {t(
-                      `settings.copyMode${
-                        (copyMode ?? DEFAULT_CLIPBOARD_MODE).charAt(0).toUpperCase() +
-                        (copyMode ?? DEFAULT_CLIPBOARD_MODE).slice(1)
-                      }`,
-                    )}
-                  </p>
-                </div>
+                <SettingsControl>
+                  <Dropdown<FileCopyMode>
+                    value={copyMode ?? DEFAULT_CLIPBOARD_MODE}
+                    label={t('settings.copyMode')}
+                    testId="copy-mode"
+                    disabled={!hasWorkspaceFile}
+                    options={FILE_COPY_MODES.map((m) => ({
+                      value: m,
+                      label: t(`settings.copyModeName${m.charAt(0).toUpperCase()}${m.slice(1)}`),
+                    }))}
+                    onChange={(m) => {
+                      // Back to the shipped convention ⇒ the key goes, rather than being
+                      // written out as the value that happens to be the default today.
+                      void setCopyMode(m === DEFAULT_CLIPBOARD_MODE ? null : m);
+                    }}
+                  />
+                </SettingsControl>
               </SettingsRow>
+              {/* What the chosen convention actually does, under the control that chose
+                  it. It is four sentences of real behaviour — a tooltip would hide the one
+                  thing a reader is here for. */}
+              <p
+                className="-mt-1 pb-3 text-xs leading-relaxed text-muted-foreground"
+                data-testid="copy-mode-means"
+              >
+                {t(
+                  `settings.copyMode${
+                    (copyMode ?? DEFAULT_CLIPBOARD_MODE).charAt(0).toUpperCase() +
+                    (copyMode ?? DEFAULT_CLIPBOARD_MODE).slice(1)
+                  }`,
+                )}
+              </p>
               <SettingsToggle
                 title={t('settings.clipboardClearEnabled')}
                 hint={t('settings.clipboardClearEnabledDesc')}

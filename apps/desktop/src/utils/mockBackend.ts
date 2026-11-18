@@ -9,6 +9,64 @@
 
 const now = () => Math.floor(Date.now() / 1000);
 
+/**
+ * A LOCAL VAULT'S CONTENTS, invented.
+ *
+ * These are the fixtures `design/mock/full-data.js` used to carry, moved to where they
+ * feed the real components instead of a parallel drawing of them. Mutable, because the
+ * preview is for clicking around: creating a machine has to show up in the library.
+ */
+let localCollections: {
+  id: string;
+  name: string;
+  color: string | null;
+  createdAt: number;
+  folders: { name: string; color: string | null }[];
+  hc: boolean | null;
+  labels: (string | { label: string; color?: string; description?: string })[];
+  hasBoard: boolean;
+}[] = [
+  {
+    id: 'lc-1',
+    name: 'Production',
+    color: '#f7768e',
+    createdAt: now() - 86_400 * 30,
+    folders: [{ name: 'Web servers', color: '#7c9cf5' }],
+    hc: null,
+    // Both stored shapes, because a word nobody coloured is a bare string and the
+    // picker has to read either — see `store/labelsFormat.ts`.
+    labels: ['eu-west', { label: 'pci', color: '#f7768e', description: 'Card data in scope' }],
+    hasBoard: false,
+  },
+  {
+    id: 'lc-2',
+    name: 'Home lab',
+    color: '#9ece6a',
+    createdAt: now() - 86_400 * 9,
+    folders: [],
+    hc: null,
+    labels: [],
+    hasBoard: false,
+  },
+];
+
+let localMachines: (MockConnection & { collectionId: string; labels?: string[] })[] = [];
+
+/** The instance vocabulary, which Settings edits and every picker is offered. */
+let instanceWords: { label: string; color?: string; description?: string }[] = [
+  { label: 'pci', color: '#f7768e', description: 'Card data in scope' },
+  { label: 'prod', color: '#e5b567', description: 'Serving real traffic' },
+  { label: 'eu-west' },
+];
+
+/** The marks document: a conversation's name, colour and labels (ADR 0022 §6). */
+let marksDoc = JSON.stringify({
+  version: 1,
+  marks: [
+    { machine: '@local', tool: 'claude', id: 'c-1', name: 'The queue work', labels: ['prod'] },
+  ],
+});
+
 // Dev harness (see utils/devHarness): when a `?harness` surface is requested, the mock
 // behaves as a shared server so the accounts/admin screens render standalone. The flag is
 // mirrored to sessionStorage because our navigate() drops the query on the first hop.
@@ -131,6 +189,7 @@ export async function mockInvoke(
   command: string,
   args?: Record<string, unknown>,
 ): Promise<unknown> {
+  const a = args ?? {};
   switch (command) {
     // --- Auth ---
     case 'is_first_run':
@@ -228,6 +287,7 @@ export async function mockInvoke(
           minInterval: 60,
         },
         dashboardPolicy: { webui: true, clients: true, minInterval: 30 },
+        agentPolicy: { webui: true, clients: true },
         managed: {},
         collectionPolicy: {
           allowCreate: true,
@@ -249,6 +309,7 @@ export async function mockInvoke(
     case 'admin_set_confirm_role_change':
     case 'admin_set_healthcheck':
     case 'admin_set_dashboard_policy':
+    case 'admin_set_agent_policy':
     case 'admin_set_layouts_policy':
     case 'admin_set_collection_policy':
     case 'admin_revoke_enrollment_token':
@@ -661,12 +722,137 @@ export async function mockInvoke(
         exitStatus: 0,
       };
     }
+    case 'agent_probe':
+    case 'agent_probe_quick':
+    case 'agent_probe_local': {
+      // Demo discovery output, so the manager renders under the dev mock with no host.
+      //
+      // The sections are built from the COMMAND rather than from a fixed order: a probe
+      // names a tool by its position in the adapter list, so answering positions 0 and 1
+      // blindly would label demo rows with whichever adapters happen to be enabled. The
+      // command carries `__tool__ <index>` followed by `command -v <bin>`, so the pair is
+      // read back out of it and each section answers for the binary it actually asked
+      // about. The marker is matched loosely on purpose: the script is wrapped in
+      // `sh -c '…'`, so every single quote inside it arrives as `'\''`.
+      const cmd = String(args?.command ?? '');
+      const demo: Record<string, string[]> = {
+        claude: [
+          '/home/demo/.claude/projects/-srv-acme-api/3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11.jsonl',
+          '/home/demo/.claude/projects/-srv-acme-api/b7d2e4a1-90c6-4f38-8b15-3e9a0d6c2f77.jsonl',
+          '/home/demo/.claude/projects/-srv-acme-web/c0a51d93-2e77-4b06-91ff-5d4c8b7e3a20.jsonl',
+        ],
+        codex: [
+          '/home/demo/.codex/sessions/2026/11/02/rollout-2026-11-02T09-14-07-01a1a05b-31b7-7b11-b3b8-35333cf07b0b.jsonl',
+        ],
+        grok: [
+          '/home/demo/.grok/sessions/%2Fsrv%2Facme%2Fapi/019fdcfe-08ee-7ca3-aaae-02470f138ad1/chat_history.jsonl',
+        ],
+      };
+      const out: string[] = [];
+      for (const m of cmd.matchAll(/__tool__ (\d+)[^\n]*\n\s*if command -v (\S+) /g)) {
+        const [, index, bin] = m;
+        out.push(`__tool__ ${index}`);
+        const lines = demo[bin];
+        if (!lines) {
+          out.push('__missing__');
+          continue;
+        }
+        out.push(`__version__ ${bin} 1.0.0 (demo)`);
+        out.push(`__body__ 0 ${lines.length}`, ...lines);
+      }
+      return { stdout: out.join('\n'), stderr: '', exitStatus: 0 };
+    }
+    case 'connect_local_program':
+      // The browser preview has no PTY, so resuming an agent on this machine returns an
+      // id and nothing streams — the same shape `connect_local_terminal` already has
+      // here, and the pane renders rather than throwing.
+      return crypto.randomUUID();
     case 'claim_session_output':
       return '';
     case 'send_terminal_input':
     case 'resize_terminal':
     case 'disconnect_terminal':
       return null;
+
+    // ── A LOCAL VAULT (ADR 0018), which the preview had none of ─────────────────
+    //
+    // Everything below is what `design/mock/` used to draw by hand. The screens are the
+    // REAL components; only the answers are invented. A hand-drawn copy of a screen goes
+    // stale the week somebody changes the screen, and this cannot: there is one
+    // implementation and the preview is it.
+    case 'local_collections':
+      return localCollections;
+    case 'local_machines':
+      return localMachines.filter((m) => m.collectionId === (a.collectionId as string));
+    case 'local_create_collection': {
+      const made = {
+        id: `lc-${localCollections.length + 1}`,
+        name: (a.name as string) ?? 'New collection',
+        color: (a.color as string) ?? null,
+        createdAt: now(),
+        folders: [],
+        hc: null,
+        labels: [],
+        hasBoard: false,
+      };
+      localCollections.push(made);
+      return made;
+    }
+    case 'local_update_collection': {
+      const c = localCollections.find((x) => x.id === a.id);
+      if (c) {
+        if (typeof a.name === 'string') c.name = a.name;
+        if (a.labels !== undefined) c.labels = a.labels as typeof c.labels;
+      }
+      return { ok: !!c };
+    }
+    case 'local_delete_collection':
+      localCollections = localCollections.filter((c) => c.id !== a.id);
+      return { ok: true };
+    case 'local_create_machine': {
+      const id = `lm-${localMachines.length + 1}`;
+      localMachines.push({
+        ...(a.record as Record<string, unknown>),
+        id,
+        collectionId: a.collectionId as string,
+      } as (typeof localMachines)[number]);
+      return { id };
+    }
+    case 'local_update_machine': {
+      const m = localMachines.find((x) => x.id === a.item);
+      if (m) Object.assign(m, a.record as Record<string, unknown>);
+      return { ok: !!m };
+    }
+    case 'local_delete_machine':
+      localMachines = localMachines.filter((m) => m.id !== a.item);
+      return { ok: true };
+    case 'local_machine_secret':
+      return { password: 'not-a-real-password' };
+    case 'local_board':
+      return { text: null };
+    case 'local_set_board':
+      return null;
+
+    // ── Labels and marks, the documents the pickers read ────────────────────────
+    case 'labels_get':
+      return { labels: instanceWords, support: 'vault' };
+    case 'labels_set':
+      instanceWords = (a.labels as typeof instanceWords) ?? [];
+      return null;
+    case 'get_marks':
+    case 'user_marks_get':
+      return { text: marksDoc, path: null };
+    case 'set_marks':
+    case 'user_marks_set':
+      marksDoc = (a.text as string) ?? (a.value as string) ?? marksDoc;
+      return null;
+
+    // ── Managing an agent conversation. Answers like a command that did nothing and
+    //    said so cleanly: the preview has no machine to remove a file on.
+    case 'agent_manage':
+    case 'agent_manage_local':
+    case 'agent_manage_quick':
+      return { stdout: '', stderr: '', exitStatus: 0 };
 
     default:
       console.warn(`[mockBackend] unhandled command: ${command}`);

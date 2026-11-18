@@ -482,7 +482,8 @@ test('the key path offers no picker in a browser, and takes one from the shell',
   await expect(page.getByTestId('auth-key-path')).toHaveValue('/home/someone/.ssh/id_picked');
 
   const asked = await page.evaluate(
-    () => (window as unknown as { __PICK_ASKED__?: { type: string; token?: string } }).__PICK_ASKED__,
+    () =>
+      (window as unknown as { __PICK_ASKED__?: { type: string; token?: string } }).__PICK_ASKED__,
   );
   expect(asked?.type, 'the shell is asked for a chooser').toBe('pick-file');
   expect(asked?.token, 'with a token, so the answer can be matched to the asking').toBeTruthy();

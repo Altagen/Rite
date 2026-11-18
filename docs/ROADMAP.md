@@ -19,9 +19,9 @@ table are in place, so the SFTP pane and the Agent Manager can be built when the
 turn comes rather than after a refactor.
 
 The **Agent Manager** is the next major feature, ahead of Phase 2. Its shape is
-settled in ADR 0022 and prototyped in `design/mock/agents.js`: the manager is a view,
-an agent session is a pane, and agents run on a machine from your library, never
-inside the server container. What is left is the code.
+settled in ADR 0022: the manager is a view, an agent session is a pane, and agents run
+on a machine from the library, never inside the server container. What is left is the
+code.
 
 ---
 
@@ -228,11 +228,31 @@ inside the server container. What is left is the code.
       colleagues name their key files differently, so one of them will have to move a file.
       The override weakens nothing (the key is still required); it costs a second place to
       look when a connection fails, which is why it waits for a real complaint
-- [ ] Export connections (encrypted backup)
+- [ ] Export connections (encrypted backup) — machines, collections, the vocabulary and
+      the workspace document: what lives in the vault AS A RECORD. **Not what Rite
+      remembers about a conversation.** A machine is imported, so its labels work by
+      construction; a conversation is DISCOVERED on a host, so a name keyed to
+      `(machine, tool, id)` is a bet on transcripts the import cannot see — and the reader
+      has to probe that machine to find the conversations again anyway, which is the work
+      the import would have been saving them. Carrying them would buy a machine-id remap,
+      an `@local` case that is dead by definition, a partial-import case, and a report
+      about rows nobody can check. The screen says it in one line instead: the names and
+      labels given to conversations stay on this machine.
+      Reopen it when somebody asks for it, and it will be cheap — the enrichments live in
+      the vault (ADR 0022 §6), not in a file beside the binary.
+      COPYING A VAULT IS NOT EXPORTING, and the difference is deliberate: `vault.db` moved
+      to another computer carries its marks, because they are in it. The export is a
+      document of what is being brought over, not a copy of the bytes.
+      **That difference ships with the feature or the feature is a trap**: a copy carries
+      every credential the master password reaches and diverges silently when two people
+      open one vault, where an export carries what was chosen. So this item is not done
+      until the distinction is in `docs/SECURITY.md` (it is, already), on the screen that
+      offers it — Settings, beside the vault's own section — and held by a test. A person
+      about to hand a colleague a file needs to be told which gesture they are making.
 - [ ] Import connections — an ssh_config import exists; this is about reading back a
       Rite export, which has no object until `Export connections` above exists
-- [ ] Host tags (in addition to collections)
-- [ ] Advanced search and filter
+- [ ] Advanced search and filter — the label filter and the search over labels ship; this
+      is the rest of it (ranges, negation, saved searches)
 
 ### 🎨 UI/UX Polish (Priority: MEDIUM)
 - [ ] Setup wizard — the shell choice and the master password are already in the main
@@ -259,7 +279,7 @@ token-versus-geometry, it is *what could ever live in a stylesheet*:
 |---|---|---|
 | Runtime geometry | 14 | a split's percentage, a popup's coordinates, `paddingLeft` from a tree depth, `pointerEvents` during a drag |
 | Static CSS, inline for no reason | 13 | `padding: '4px'`, `resize: 'vertical'`, `userSelect: 'none'`, `rotate(90deg)` |
-| A colour the user chose | 14 | a collection's, a machine's, a member's avatar, the swatch grids |
+| A colour the user chose | 20 | a collection's, a machine's, a member's avatar, the swatch grids, an agent mark's dot in both arrangements, a label's chip, a label's swatch grid in the field and in the manager |
 | A context's badge | 1 | `backgroundImage` from a hash |
 | **A design token, written as a hex** | **1** | `LibrarySidebar.tsx:841` |
 
@@ -267,6 +287,36 @@ Only the second group belongs in a stylesheet. The third is the hard one and it 
 one a theme has to coexist with: those values are per-element user data, not design, so
 no amount of tokenising moves them — the most that can be done is to give them one
 mechanism instead of fourteen hand-written ones.
+
+The fifteenth arrived with the agent manager (ADR 0022 §6): a mark's swatch grid, where
+the colour being drawn is the one about to be stored. It is the third group exactly — a
+name and a colour a person gave to someone else's conversation — so it is inventoried
+rather than argued with, and it takes the shared `MACHINE_SWATCHES` rather than growing a
+palette of its own.
+
+The sixteenth and seventeenth are that same stored colour, drawn as a dot beside the name
+in each of the manager's two arrangements. The card's left edge is a third reading of a
+stored colour — the MACHINE's, from the Library — and it stays out of this count only
+because it is written `style={expr}` rather than `style={{…}}`, which the counter does not
+see. Said here rather than left as a gap: it is the same kind, and no stylesheet can hold
+it either.
+
+The eighteenth is a label's chip, and it is the third group with the argument taken one
+step further: that colour is not even *stored*, it is **derived from the label's own text**
+(`labelColor`). `urgent` is the same colour on every machine and in every vault with
+nothing kept in step, and an exported document carries no palette that could disagree with
+itself. A stylesheet cannot hold it for a stronger reason than the others — labels are an
+open vocabulary, so there is no finite set of classes to write.
+
+The nineteenth is the swatch grid in a vocabulary editor — the palette offered when
+choosing a colour FOR A WORD, drawn in the colour it is about to store. The same site the
+fifteenth was, one screen over, and the same reason: the value being drawn is the one about
+to be written, so no stylesheet has it until it exists.
+
+The twentieth is the label manager's own swatch row, which is the nineteenth one screen
+over: the row being edited draws the palette in the colours it is about to store. Both stay
+because the field and the manager are two surfaces — one applies a word, the other declares
+it — and neither can read a colour out of a stylesheet that does not have it yet.
 
 The fifth is one site and it is the whole argument for doing this before a theme exists.
 A folder's Delete button carries `color: '#f7768e'`, which is `--destructive`
@@ -287,15 +337,20 @@ WebKitGTK. Whether the sheets survive `'self'` is a question about what the bund
 at runtime — xterm.js builds style elements of its own — so it gets measured in the
 tls-proxy suite rather than asserted.
 
-- [x] Inventory the sites and sort them — the table above
 - [ ] The 13 static sites into classes, and the hex back onto its token: no behaviour
       change, identical output
-- [ ] One mechanism for the 14 user-chosen colours instead of fourteen
+- [ ] One mechanism for the 14 user-chosen colours instead of fourteen. 0.2.9 did the
+      five that offer `MACHINE_SWATCHES` — the machine form, the two folder dialogs, the
+      vocabulary manager and a conversation's mark dialog all render `SwatchGrid` now.
+      What is left is the collection and avatar sites, which is the palette merge the
+      header of `theme/swatches.ts` calls a migration rather than an edit: the two lists
+      overlap in one colour, so the other sixteen each need a mapping for what is already
+      stored
 - [ ] Runtime geometry through a CSS variable on the element rather than a style string —
       worth doing for readability, but it buys nothing on the CSP
 - [ ] `style-src-elem 'self'` beside the kept `style-src-attr 'unsafe-inline'` in
       `packages/rite-server/src/lib.rs`, with the tls-proxy suite proving the sheets and
-      xterm still load — independent of the four items above, and the only one that
+      xterm still load — independent of the three items above, and the only one that
       actually tightens anything
 
 ### 🌍 The server's refusals, as codes (Priority: LOW)
@@ -342,10 +397,21 @@ than waiting, not because anything is unresolved.
 - [ ] **TypeScript 5.9 → 7.0, with @types/node 24 → 26**, one PR, scheduled for 0.3.0. Two
       majors: expect real diagnostics changes across the frontend, which is a body of work
       rather than a bump. Tracked in #255.
+- [ ] **argon2 0.5 → 0.6**, its own PR. `password-hash` 0.6 redesigned the API rather than
+      renaming it: `SaltString` has left the root and `hash_password` no longer takes the
+      salt as a second argument, so this is a reworking of the password-hashing path
+      (ADR 0010's auth hash and the vault's master key) and not a bump. The safety net
+      exists and should be read while doing it — `cross_impl_vectors` in
+      `packages/crypto/src/vault.rs` pins the derived key in hex, so a changed default
+      fails rather than re-keying somebody's vault. Deliberately left out of 0.2.9, which
+      took chacha20poly1305 0.11 the same evening.
+- [ ] **rfd 0.17 → 0.18**, blocked on something that is not ours: rfd 0.18 needs
+      `gtk-sys 0.19` and `wry 0.57` reaches `gtk-sys 0.18` through `webkit2gtk`, while
+      cargo allows one package only to link the native `gtk-3`. Reopen when wry moves.
 
 ---
 
-## 🤖 Agent Manager (next major feature — ahead of Phase 2)
+## 🤖 Agent Manager (in progress — ahead of Phase 2)
 
 **Goal:** Stop hunting for AI coding agents. See the ones that exist, resume one
 where it stopped, and start a new one already carrying its context — without
@@ -357,41 +423,41 @@ but an icon. This is something no SSH client does, and it sits directly on what
 0.2.3 shipped — dashboard cards, the Board, and client-execute (ADR 0012), which
 already runs a command on the *local* machine from either shell.
 
-**This is an AI feature, so it gets mocked before it gets built** — in
-`design/mock/`, as the dashboard was, so the shape is argued over on screen
-rather than in a pull request. An ADR follows the mock, and code follows the ADR.
+**This is an AI feature, so the shape gets looked at before it gets built** — argued
+over on screen rather than in a pull request, with an ADR after it and code after that.
 
-- [ ] **PTY + exec in `rite-core`** — there is PTY+shell (interactive) and exec
-      without a PTY (one-shot); an agent wants both. Not the typed-after-a-delay
-      shortcut: a shell discards queued input while it sets the tty up, so an early
-      send is *gone*, which the split-preset work already proved and fixed once.
-- [x] **`local_terminal.rs`** — **done**, both halves. `cwd` arrived in 0.2.6 for splits;
-      the argv-direct spawn is `LocalProgram::{Shell, Script, Argv}` with
-      `LocalSession::run_program(events, argv, cwd)`, so a resume command reaches `execvp`
-      as written instead of being re-parsed by `sh -c`. An argv does not borrow the
-      shell's fallback resolution, which would have answered a missing CLI with an
-      anonymous `/bin/sh` prompt. Nothing reaches it from the UI yet — it is groundwork,
-      and six tests are its only caller. ADR 0022 §7.2 and its addendum.
-- [ ] **Agent pane**, not a menu: an agent has a context of its own — a working
-      directory, a transcript, a lifetime — and belongs to no machine (see *Pane
-      or menu* above). **Pane kinds** in Phase 1 are done, so this is a registration
-      under `apps/desktop/src/panes/kinds/` rather than a change to the split tree.
-- [ ] Discover existing sessions — list them with their project, their last
-      activity and whether they are still running
-- [ ] **Resume** a session in a pane, without the user ever seeing its id
-- [ ] **Seed** a new agent with its context automatically, rather than pasting it
-- [ ] Per-tool adapter, isolated on purpose — `--resume <uuid>`, the paths under a
-      vendor's home directory and the transcript format are **not a stable API**
-      and will change without notice. One adapter per tool, written expecting to
-      break, with the breakage contained to it. (ADR 0003's lesson, learned the
-      hard way: pin the constraint, never the incidental shape.)
+WHERE IT IS LOOKED AT CHANGED IN 0.2.9. It used to be `design/mock/`, a hand-written
+copy of the screens; that folder is deleted, and the preview is the app itself —
+`?shell=desktop` for the desktop shell, `?harness=app` for a browser signed into an
+instance, both rendering the REAL components against invented answers
+(`utils/mockBackend.ts`, `utils/devHarness.ts`). It needs no binary and no server, which
+is what the mock was for.
+
+The reason for the change is the two-way rule the mock needed and the preview does not.
+A drawing can be ahead of the code or behind it, so "mock first" had to come with "and
+the mock is corrected from the code when the code has measured something it had not" —
+and the mock still shipped a release showing a git branch the code had refused and six
+adapters where seven existed. A preview cannot disagree with the screen it IS.
+
+- [ ] **Seed** a new agent with its context automatically, rather than pasting it — the
+      directory is passed; the rest is the management layer below.
+- [ ] **The vendor's own name for a conversation** — Claude Code writes an `aiTitle` and
+      6 of 8 transcripts here carry one. It is better than falling back to the first
+      message, and it is in the LAST 64 KB, so it is a second bounded read per file rather
+      than the same pass as the question.
+- [ ] **A turn count: refused, not pending.** It needs the whole transcript, and
+      `"type":"user"` is not a turn — on the 1.1 GB one it appears 14 091 times, because a
+      tool result carries the same type. There is no cheap honest count to show.
+- [ ] **The Tools dialog, writable** — the adapter set is the user's (ADR 0022 §4
+      addendum): editing the two commands, turning a tool off, adding a CLI that is not one
+      of the seven. Read-only today.
 - [ ] **Compare what is in effect across machines** — "this project loads three skills
       on web-01 and two on my laptop" is the same read, answered twice. Still
       read-only, and the natural next step once the single-machine view is real.
 - [ ] **The management layer, deliberately after the basics** — stored pre-prompts,
       per-project conventions (a `CLAUDE.md` and its equivalents), pre-arranged agent
       set-ups. This is where a real advantage over running the CLI yourself would sit,
-      and it is explicitly *not* in the first mock: the basics come first, and what
+      and it is explicitly *not* in the first version: the basics come first, and what
       "plus" means gets argued once the basics are on screen.
 - [ ] Decide what *not* to do — this is adjacent to Rite's purpose, and the risk
       is becoming two half-products instead of one good one
@@ -543,7 +609,6 @@ profile exists, and it would teach the wrong shape in the meantime.
 ### 🎯 Power User Features (Priority: LOW)
 - [ ] Terminal search history
 - [ ] Command history sync across devices
-- [ ] Labels and pre-hook scripts
 - [ ] Custom scripts library
 - [ ] Per-host environment variables
 

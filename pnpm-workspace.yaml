@@ -21,3 +21,18 @@ overrides:
   rollup@>=4.0.0 <4.59.0: '>=4.59.0'
   # Reached through postcss, which Vite pulls in to process the stylesheets.
   source-map-js@<1.2.2: '>=1.2.2'
+
+# ADVISORIES WE ANSWER FOR RATHER THAN FIX. `overrides` above is the first answer and the
+# better one: pull the patched version in. This is the other, for an advisory with no
+# patched version to pull.
+#
+#   GHSA-fc5q-39xc-vjpf — ReDoS in picomatch <= 4.0.7, high. There is NO FIX: the advisory
+#   names 4.0.8 and 4.0.7 is the newest version published. It reaches us only through
+#   devDependencies (`@typescript-eslint` -> `tinyglobby` -> `picomatch`), so it is a glob
+#   matcher running at lint time and in no shipped artefact — not the Rust server, not the
+#   bundle. Allowed on 2026-11-18 so that one unfixable dev advisory does not disarm the
+#   audit for everything else, which is what `--audit-level=high` would otherwise force us
+#   to lower. REMOVE IT when 4.0.8 exists: `npm view picomatch version` answers that.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-fc5q-39xc-vjpf

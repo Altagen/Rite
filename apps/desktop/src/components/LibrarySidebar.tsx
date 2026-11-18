@@ -1,7 +1,7 @@
 /**
- * Library sidebar (ADR 0014 — navigation skeleton, transposed from design/mock).
+ * Library sidebar (ADR 0014 — navigation skeleton).
  *
- * A tree of the saved connections in the target model (design/mock): personal
+ * A tree of the saved connections: personal
  * folders → machines, then first-class **collection** nodes (ADR 0016) — each with
  * its own icon, colour and role badge — whose machines are folder-grouped inside.
  * Personal machines carry no `collectionId`; a machine with one is rendered under
@@ -286,9 +286,13 @@ function CollectionNode({
 
   return (
     <div>
+      {/* The node that OPENS the collection, with a handle of its own: a test clicking the
+          name text lands on whatever child is under the cursor — the chevron on an empty
+          collection — and toggles instead of opening. */}
       <div
         onClick={onOpen}
         className={`m-tnode pl-1.5 ${active ? 'sel' : ''}`}
+        data-testid={`lib-collection-${name}`}
       >
         <button
           onClick={(e) => {
@@ -1017,7 +1021,15 @@ export function LibrarySidebar({
     );
   };
 
-  // Client-side search across name / target / folder / collection.
+  // Client-side search across name / target / folder / collection / labels.
+  //
+  // CLIENT-SIDE IS FORCED, NOT CHOSEN. A label names a project, a customer, a person, and
+  // it is sealed inside the machine's record (ADR 0011) — so an index the server could
+  // search would be the one thing this model does not allow. The list here is already
+  // decrypted, which is why the search works at all.
+  //
+  // In the box rather than behind a dropdown: a label you have to open a menu to use is a
+  // label you stop using.
   const q = query.trim().toLowerCase();
   const matches = (c: ConnectionInfo) =>
     !q ||
@@ -1025,7 +1037,8 @@ export function LibrarySidebar({
     c.hostname.toLowerCase().includes(q) ||
     c.username.toLowerCase().includes(q) ||
     (c.folder ?? '').toLowerCase().includes(q) ||
-    (c.collectionName ?? '').toLowerCase().includes(q);
+    (c.collectionName ?? '').toLowerCase().includes(q) ||
+    (c.labels ?? []).some((l) => l.toLowerCase().includes(q));
   const shown = connections.filter(matches);
 
   // Personal machines (no collection) vs collection-scoped machines (ADR 0016).

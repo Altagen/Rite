@@ -601,8 +601,13 @@ def scenario_second(wid):
     check("the first instance is untouched", js("1+1") == 2)
 
 
-def drag_over(wid, needle):
+def drag_over(wid, needle, mid_drag=False):
     """Drag the real mouse across the row carrying `needle`, and say if it selected.
+
+    `mid_drag` returns the rect count from BEFORE the button is released as well, as
+    `(mid, after)`. A mode that copies on selection releases it on that very mouseup, so
+    counting only afterwards cannot tell a drag that selected nothing from one that
+    selected and was released — two different bugs with the same reading.
 
     A real pointer, not a synthetic MouseEvent: dispatching mousedown/mousemove/mouseup
     with clientX/clientY reaches xterm's selection service in Chromium and reaches nothing
@@ -633,9 +638,11 @@ def drag_over(wid, needle):
     time.sleep(0.2)
     subprocess.run(["xdotool", "mousemove", str(ox + rect["right"] - 4), str(y)], check=False)
     time.sleep(0.2)
+    mid = js("document.querySelectorAll('.xterm-selection div').length") if mid_drag else None
     subprocess.run(["xdotool", "mouseup", "1"], check=False)
     time.sleep(0.5)
-    return js("document.querySelectorAll('.xterm-selection div').length")
+    after = js("document.querySelectorAll('.xterm-selection div').length")
+    return (mid, after) if mid_drag else after
 
 
 def clipboard_through_a_gesture(write=None):
@@ -748,7 +755,865 @@ def scenario_clipboard(wid):
     shot("clipboard")
 
 
+def right_click(wid):
+    """Right-click in the middle of the terminal, with the real pointer.
+
+    `drag_over` above says why a synthetic MouseEvent is not an option here either: it
+    reaches nothing in WebKitGTK.
+    """
+    rect = js(
+        "(() => { const b = document.querySelector('.xterm-screen').getBoundingClientRect();"
+        " return {x: Math.round(b.left + b.width/2), y: Math.round(b.top + b.height/2)}; })()"
+    )
+    geo = x("xdotool", "getwindowgeometry", "--shell", wid)
+    org = dict(l.split("=", 1) for l in geo.splitlines() if "=" in l)
+    subprocess.run(
+        ["xdotool", "mousemove",
+         str(int(org["X"]) + rect["x"]), str(int(org["Y"]) + rect["y"])],
+        check=False,
+    )
+    subprocess.run(["xdotool", "click", "3"], check=False)
+    time.sleep(1.0)
+
+
+def pick_copy_mode(name):
+    """Choose a copy convention in Settings, by test id, and close Settings.
+
+    Through the UI and not by writing the document: the document is not an editing
+    surface, and this is also the path a person takes.
+    """
+    js("document.querySelector('[data-testid=vault-pastille]')?.click(); 1")
+    time.sleep(0.4)
+    js("document.querySelector('[data-testid=pastille-settings]')?.click(); 1")
+    time.sleep(0.6)
+    js("document.querySelector('[data-testid=settings-nav-clipboard]')?.click(); 1")
+    time.sleep(0.4)
+    js("document.querySelector('[data-testid=copy-mode]')?.click(); 1")
+    time.sleep(0.4)
+    js(f"document.querySelector('[data-testid=copy-mode-{name}]')?.click(); 1")
+    time.sleep(0.5)
+    chosen = js("document.querySelector('[data-testid=copy-mode]')?.textContent")
+    # Escape is not enough here: the dropdown closed on it, not the screen. The close
+    # button is the one the person uses, and it is found by its label rather than its
+    # position so a rearranged header does not break this.
+    press("Escape")
+    time.sleep(0.3)
+    js(
+        "(() => { const b = Array.from(document.querySelectorAll('button'))"
+        "   .find(b => /settings|fermer|close/i.test(b.getAttribute('aria-label') || ''));"
+        " if (b) b.click(); return !!b; })()"
+    )
+    time.sleep(0.8)
+    return chosen
+
+
+def scenario_rightpaste(wid):
+    """`selectRightPaste`, the mode that reproduces PuTTY, on the engine that ships.
+
+    IT DID NOTHING AT ALL, and the reason is here rather than in the decision table. The
+    paste half has no native event to ride: a middle click is served by the engine itself,
+    a context menu carries nothing, so the client has to read the clipboard — and reading
+    is gated on transient activation. The right button grants it; the `contextmenu` WebKit
+    synthesises from that button does not. Measured below, both halves of it, because the
+    two have different fixes and only one of them is "move the paste to the mouseup".
+
+    The `clipboard` scenario above could never have caught it: every read it makes happens
+    inside a keydown.
+    """
+    print("\nright-click paste")
+    if not js("!!document.querySelector('.xterm-rows')"):
+        check("a local terminal opens", open_terminal())
+    focus(wid)
+    js("document.querySelector('.xterm-helper-textarea')?.focus()")
+    time.sleep(0.3)
+
+    # Something on the clipboard, put there the only way this engine allows: from inside a
+    # gesture. The page wrote it, which is the case the mode itself produces — a selection
+    # the client copied a moment earlier.
+    put = clipboard_through_a_gesture("BENCH-RIGHT")
+    check("the clipboard holds a known value", put == "ok:BENCH-RIGHT", f"got {put}")
+
+    # ONE right click, and every event it fires asks the same question.
+    js(
+        "window.__R = {};"
+        " window.__cm = (e) => { if (e.type === 'contextmenu') e.preventDefault();"
+        "   if (e.type !== 'contextmenu' && e.button !== 2) return;"
+        "   const k = e.type; window.__R[k] = 'pending';"
+        "   navigator.clipboard.readText().then(v => window.__R[k] = 'ok:' + v)"
+        "     .catch(err => window.__R[k] = 'ERR ' + err.name); };"
+        " for (const t of ['contextmenu', 'mousedown', 'mouseup'])"
+        "   window.addEventListener(t, window.__cm, true); 1"
+    )
+    right_click(wid)
+    time.sleep(1.5)
+    res = json.loads(js("JSON.stringify(window.__R)") or "{}")
+    js(
+        "for (const t of ['contextmenu', 'mousedown', 'mouseup'])"
+        " window.removeEventListener(t, window.__cm, true); 1"
+    )
+    press("Escape")
+    check("a right click reaches the page as contextmenu", "contextmenu" in res,
+          f"got {sorted(res)}")
+    # The one the fix rests on. If this ever breaks, the mode has no paste at all.
+    check("the clipboard can be read from the release of that click",
+          res.get("mouseup") == "ok:BENCH-RIGHT", f"got {res.get('mouseup')}")
+    # And the one that was the bug. A green here would mean WebKit changed and the paste
+    # could move back to the gesture it is named after — so it is asserted, not assumed.
+    check("but not from inside the context menu, on this engine",
+          res.get("contextmenu") == "ERR NotAllowedError", f"got {res.get('contextmenu')}")
+
+    # ── and now the client's own, end to end ─────────────────────────────────────
+    chosen = pick_copy_mode("selectRightPaste")
+    check("the mode is chosen in Settings",
+          chosen == "Select to copy, right click pastes", f"got {chosen}")
+    focus(wid)
+    js("document.querySelector('.xterm-helper-textarea')?.focus()")
+    time.sleep(0.3)
+
+    clipboard_through_a_gesture("BENCH-PUTTY")
+    before = len(sent_bytes())
+    right_click(wid)
+    time.sleep(1.2)
+    after = " ".join(sent_bytes(before))
+    hexed = "".join(f"{ord(c):02x} " for c in "BENCH-PUTTY").strip()
+    check("a right click pastes into the shell", hexed in after, f"sent={after}")
+    check("and pastes once", after.count(hexed) == 1, f"{after.count(hexed)} occurrences")
+
+    # The copy half, and the release that goes with it. A selection that stays highlighted
+    # after the drag that made it has nothing left to do: it was already copied.
+    press("ctrl+c")
+    time.sleep(0.3)
+    type_text("echo BENCH-RELEASE")
+    time.sleep(0.6)
+    mid, left = drag_over(wid, "BENCH-RELEASE", mid_drag=True)
+    check("dragging the mouse selects something", bool(mid), f"{mid} rects mid-drag")
+    got = clipboard_through_a_gesture()
+    check("the selection was copied without a chord",
+          isinstance(got, str) and "BENCH-RELEASE" in got, f"got {got}")
+    # The bug this half fixes: the highlight used to stay after the drag that made it,
+    # with nothing left to do about it — it had already been copied.
+    check("and the selection is released on the mouseup", left == 0, f"{left} rects left")
+
+    press("ctrl+c")
+    shot("rightpaste")
+
+
+def scenario_rightcopy(wid):
+    """`rightCopyPaste`: one gesture, two meanings, on the engine that ships.
+
+    Selecting does nothing on its own; a right click copies the selection and lets it go;
+    a right click with nothing selected pastes. The decision is a table
+    (`e2e/clipboard-decision-check.mjs`); what only a real engine can answer is whether
+    the selection is STILL THERE when the right mouseup arrives. If xterm cleared it on
+    the mousedown, every right click would read an empty selection and paste — the mode
+    would have exactly one of its two meanings, and the table would still be green.
+    """
+    print("\nright click copies, then pastes")
+    if not js("!!document.querySelector('.xterm-rows')"):
+        check("a local terminal opens", open_terminal())
+    chosen = pick_copy_mode("rightCopyPaste")
+    check("the mode is chosen in Settings", chosen == "Right click copies, then pastes",
+          f"got {chosen}")
+    focus(wid)
+    js("document.querySelector('.xterm-helper-textarea')?.focus()")
+    time.sleep(0.3)
+
+    press("ctrl+c")
+    time.sleep(0.3)
+    type_text("echo BENCH-RIGHTCOPY")
+    time.sleep(0.6)
+
+    # Something else on the clipboard first, so "the selection was copied" cannot pass on
+    # what was already there.
+    clipboard_through_a_gesture("BENCH-STALE")
+
+    # READING THE CLIPBOARD COSTS THE SELECTION. The probe presses a key to get a gesture,
+    # and a keystroke clears xterm's selection — which is correct of xterm and fatal to a
+    # scenario that reads the clipboard between selecting and right-clicking. So each half
+    # gets its own drag, and nothing is read between a drag and the click under test.
+    mid, left = drag_over(wid, "BENCH-RIGHTCOPY", mid_drag=True)
+    check("dragging selects", bool(mid), f"{mid} rects mid-drag")
+    check("and leaves the selection on screen", left > 0, f"{left} rects left")
+    got = clipboard_through_a_gesture()
+    check("a drag copies nothing by itself", got == "ok:BENCH-STALE", f"got {got}")
+
+    drag_over(wid, "BENCH-RIGHTCOPY")
+    before = len(sent_bytes())
+    right_click(wid)
+    time.sleep(0.8)
+    # The selection first, because reading the clipboard would clear it either way.
+    gone = js("document.querySelectorAll('.xterm-selection div').length")
+    after = " ".join(sent_bytes(before))
+    check("the first right click sends nothing to the shell", after == "", f"sent={after}")
+    # THE MEASUREMENT THIS SCENARIO EXISTS FOR. Without the release the next right click
+    # meets the same selection, copies it again, and the paste is unreachable for ever.
+    check("and lets the selection go", gone == 0, f"{gone} rects left")
+    got = clipboard_through_a_gesture()
+    check("and copied the selection", isinstance(got, str) and "BENCH-RIGHTCOPY" in got,
+          f"got {got}")
+
+    before = len(sent_bytes())
+    right_click(wid)
+    time.sleep(1.2)
+    after = " ".join(sent_bytes(before))
+    hexed = "".join(f"{ord(c):02x} " for c in "BENCH-RIGHTCOPY").strip()
+    check("the second right click pastes what the first copied", hexed in after, f"sent={after}")
+    check("and pastes it once", after.count(hexed) == 1, f"{after.count(hexed)} occurrences")
+
+    press("ctrl+c")
+    shot("rightcopy")
+
+
+def scenario_agents(wid):
+    """The agent manager on a real desktop, which is the only place it has a local machine.
+
+    A browser is offered none — its "local" would be the instance's container, shared by
+    every member — so the browser suite can only hold the absence. THIS is the half that
+    cannot be tested anywhere else: a desktop window, in a context with no vault opened
+    at all, offering the machine it is running on and probing it.
+
+    The image has no agent CLI installed, so the honest answer is none. That is the
+    assertion: "none" has to read as an answer, with the time it was read, rather than as
+    an error or a blank panel.
+    """
+    print("\nagent manager")
+    focus(wid)
+    opened = js(
+        "(() => { const b = document.querySelector('[data-testid=toolbar-agents]');"
+        " if (!b) return false; b.click(); return true; })()"
+    )
+    check("the toolbar opens it", opened is True)
+    time.sleep(0.8)
+    check("and it is a view", js("!!document.querySelector('[data-testid=agent-manager]')"))
+
+    # The machine that is always there on a desktop, and only on a desktop.
+    js("document.querySelector('[data-testid=agent-machine]')?.click(); 1")
+    time.sleep(0.4)
+    labels = js(
+        "Array.from(document.querySelectorAll('[role=option]')).map(o => o.textContent.trim())"
+    )
+    check("this machine is offered, with no vault open", "This machine" in (labels or []),
+          f"got {labels}")
+    js(
+        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+        "   .find(o => o.textContent.trim() === 'This machine'); if (o) o.click(); })()"
+    )
+    time.sleep(0.5)
+    check("and picking it says it has not been looked at",
+          js("!!document.querySelector('[data-testid=agent-not-probed]')"))
+
+    js("document.querySelector('[data-testid=agent-probe]')?.click(); 1")
+    time.sleep(3.0)
+    err = js("document.querySelector('[data-testid=agent-error]')?.textContent || ''")
+    empty = js("document.querySelector('[data-testid=agent-empty]')?.textContent || ''")
+    check("probing answers rather than failing", err == "", f"error={err}")
+    # No CLI in this image, so none is the truth — and it is said with the time it was
+    # read, which is what makes it an answer.
+    check("and says none, dated", "This machine" in empty, f"got {empty!r}")
+    shot("agents")
+
+
+def scenario_agentload(wid):
+    """The manager under the load it actually meets. Run with RITE_BENCH_AGENTS=1.
+
+    Seventy-odd conversations, in the proportions measured on a real machine: six Claude
+    projects, sixty-one Codex rollouts of which exactly one was ever typed into, four
+    Grok projects and two Antigravity databases. A manager that reads well on four cards
+    says nothing about the one in front of a person.
+
+    It asserts the few things that are facts — the count, the order, that the one Codex
+    conversation with a question is first — and then takes a screenshot, because the rest
+    of what this scenario is for is a judgement nobody can make from a number.
+    """
+    print("\nagent manager, loaded")
+    focus(wid)
+    js("document.querySelector('[data-testid=toolbar-agents]')?.click(); 1")
+    time.sleep(0.8)
+    # Two calls, because the options are rendered by the click above: asking for them in
+    # the same tick asks before React has drawn them.
+    js("document.querySelector('[data-testid=agent-machine]')?.click(); 1")
+    time.sleep(0.5)
+    js(
+        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+        "   .find(o => o.textContent.trim() === 'This machine'); if (o) o.click(); })()"
+    )
+    time.sleep(0.5)
+    js("document.querySelector('[data-testid=agent-probe]')?.click(); 1")
+    time.sleep(6.0)
+
+    sub = js("document.querySelector('[data-testid=agent-subtitle]')?.textContent || ''")
+    check("every conversation is counted", "73 conversations" in sub, f"got {sub!r}")
+    bands = js(
+        "Array.from(document.querySelectorAll('[data-testid^=agent-band-]'))"
+        ".map(b => b.getAttribute('data-testid').replace('agent-band-',''))"
+    )
+    check("one band per tool that answered", bands == ["claude", "codex", "grok", "antigravity"],
+          f"got {bands}")
+    first = js(
+        "document.querySelector('[data-testid=agent-band-codex] [data-testid^=agent-card-]')"
+        "?.textContent || ''"
+    )
+    # The whole reason the listing asks for a time: this one started in September.
+    check("the Codex conversation written last is first", "Reprendre le portage" in first,
+          f"got {first[:60]!r}")
+
+    # THE BAND SPLITS WHERE THE INFORMATION DOES. Seven conversations were typed into;
+    # the other sixty-six have a date and an id, and they sit behind one line per band
+    # rather than in front of the card being looked for.
+    count = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
+    # Seven were typed into, and six more belong to adapters that do not read a
+    # transcript at all — those are drawn plainly, because "no question" would be a
+    # statement about Grok that is only true of this client.
+    check("only the conversations with a question are drawn", count == 13, f"{count} cards")
+    quiet = js(
+        "Array.from(document.querySelectorAll('[data-testid^=agent-quiet-]'))"
+        # The chevron is the first child and carries no words; the count is the line.
+        ".map(b => b.textContent.replace(/[^0-9a-zA-Z ]/g, '').trim())"
+    )
+    check("and the rest are one line per band, counted",
+          quiet == ["60 sessions with no question"],
+          f"got {quiet}")
+    shot("agentload-stacked")
+
+    js("document.querySelector('[data-testid=agent-quiet-codex]')?.click(); 1")
+    time.sleep(0.6)
+    opened = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
+    check("opening one shows them, without hiding anything else", opened == 73, f"{opened} cards")
+    shot("agentload-opened")
+    js("document.querySelector('[data-testid=agent-quiet-codex]')?.click(); 1")
+    time.sleep(0.4)
+
+    # And the filter that answers "only November", on the load that needs it.
+    js("document.querySelector('[data-testid=agent-since]')?.click(); 1")
+    time.sleep(0.4)
+    js(
+        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+        "   .find(o => /24 hours/.test(o.textContent)); if (o) o.click(); })()"
+    )
+    time.sleep(0.6)
+    sub = js("document.querySelector('[data-testid=agent-subtitle]')?.textContent || ''")
+    check("the count still names what the machine holds", "73 conversations" in sub, f"got {sub!r}")
+    shot("agentload-since")
+    js("document.querySelector('[data-testid=agent-since]')?.click(); 1")
+    time.sleep(0.4)
+    js(
+        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+        "   .find(o => /Any time/.test(o.textContent)); if (o) o.click(); })()"
+    )
+    time.sleep(0.4)
+
+    # NOTHING HERE MAY BE ENRICHED, because this window has no vault (ADR 0022 §6, as
+    # 0.2.9 amends it). A name, a colour and a label are what Rite REMEMBERS about
+    # somebody else's conversation, and they are sealed under a key — so with no vault
+    # there is nowhere honest to put them and the gestures are not drawn at all.
+    #
+    # THE ABSENCE IS THE ASSERTION, and it needs the line beside it: a screen that
+    # quietly loses its buttons reads as broken, which is why the manager says why once,
+    # where the count is.
+    check(
+        "no card offers to be renamed with no vault",
+        js("document.querySelectorAll('[data-testid^=agent-rename-]').length") == 0,
+    )
+    check(
+        "and the screen says why rather than leaving a hole",
+        js("!!document.querySelector('[data-testid=agent-read-only]')"),
+    )
+    said = js("document.querySelector('[data-testid=agent-read-only]')?.textContent || ''")
+    check("the line names the vault", "vault" in said.lower() or "coffre" in said.lower(),
+          f"got {said!r}")
+
+    # AND EVERYTHING THAT READS STILL WORKS, which is the other half of the rule: the
+    # cards are there, they can be opened, and a conversation can be resumed. Running an
+    # agent is not governed — anyone who can open a terminal pane types the same line.
+    check("the cards are still listed",
+          js("document.querySelectorAll('[data-testid^=agent-card-]').length") > 0)
+    check("and a conversation can still be resumed",
+          js("!!document.querySelector('[data-testid^=agent-resume-]')"))
+    first_card = js(
+        "document.querySelector('[data-testid^=agent-card-]')"
+        "?.getAttribute('data-testid') || ''"
+    )
+    js(f"document.querySelector('[data-testid=\"{first_card}\"]')?.click(); 1")
+    time.sleep(0.6)
+    check("the detail panel opens", js("!!document.querySelector('[data-testid=agent-detail]')"))
+    check(
+        "and offers no Modify",
+        js("!!document.querySelector('[data-testid=agent-detail-rename]')") is False,
+    )
+    shot("agentload-readonly")
+
+    # THE FILTERS THAT NARROW BY WHAT A PERSON WROTE — by name, by label — are not
+    # exercised here any more, and cannot be: they need marks, marks need a vault, and
+    # this window has none. `label-field.spec.ts` and `agent-cards.spec.ts` drive both
+    # against a vault in chromium; what is left for a WebKitGTK bench to say about them
+    # is geometry, which `scenario_design` measures on a window that opens one.
+
+    # EVERY MACHINE AT ONCE, which is the entry no single-machine tool has. It never
+    # probes: it is every answer already held, so with one machine read it says one.
+    js("document.querySelector('[data-testid=agent-machine]')?.click(); 1")
+    time.sleep(0.5)
+    js(
+        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+        "   .find(o => o.textContent.trim() === 'All machines'); if (o) o.click(); })()"
+    )
+    time.sleep(0.8)
+    sub = js("document.querySelector('[data-testid=agent-subtitle]')?.textContent || ''")
+    check("all machines speaks for what has been read",
+          "73 conversations across 1 machines" in sub, f"got {sub!r}")
+    # And it asks nothing: fanning a probe across the library would be one SSH round
+    # trip per machine behind a view that opened by itself.
+    check("and offers no probe of its own",
+          js("!document.querySelector('[data-testid=agent-probe]')"))
+    shot("agentload-all")
+    js("document.querySelector('[data-testid=agent-machine]')?.click(); 1")
+    time.sleep(0.5)
+    js(
+        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+        "   .find(o => o.textContent.trim() === 'This machine'); if (o) o.click(); })()"
+    )
+    time.sleep(0.6)
+
+    # CLICKING A CARD OPENS WHAT IS KNOWN ABOUT IT, beside the list rather than over it.
+    js(
+        "(() => { const c = document.querySelector('[data-testid^=agent-card-]');"
+        " if (c) c.click(); })()"
+    )
+    time.sleep(0.6)
+    check("a card opens a detail", js("!!document.querySelector('[data-testid=agent-detail]')"))
+    facts = js("document.querySelector('[data-testid=agent-detail]')?.textContent || ''")
+    # What a listing gave, and nothing it did not: the resume line is the fact a person
+    # cannot get anywhere else, because the adapter built it.
+    check("and it carries the line that resumes it", "claude --resume" in facts, f"got {facts[:80]!r}")
+
+    # THE FACTS AND THE ACTIONS FIRST, THE PROMPT LAST. A first message can be a pasted
+    # file, and four thousand characters at the top of the panel pushed all five buttons
+    # off the bottom of it — so opening a card meant scrolling before anything could be
+    # done. Asserted as an ORDER in the document rather than as a pixel, because that is
+    # the decision; the screenshot beside it is for the rest.
+    order = js(
+        "(() => { const d = document.querySelector('[data-testid=agent-detail]');"
+        " const a = d.querySelector('[data-testid=agent-detail-resume]');"
+        " const p = d.querySelector('[data-testid=agent-detail-ask]');"
+        " if (!a || !p) return 'missing';"
+        " return (a.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING)"
+        "   ? 'actions first' : 'prompt first'; })()"
+    )
+    check("the actions come before the prompt", order == "actions first", f"got {order!r}")
+    shot("agentload-detail")
+    js("document.querySelector('[data-testid=agent-detail-close]')?.click(); 1")
+    time.sleep(0.4)
+
+    # AND THE FOLD IS MEASURED, NOT GUESSED. One of the seeded conversations opens with a
+    # pasted file; the short ones must not grow a "see more" that reveals nothing.
+    def open_card_with(needle):
+        return js(
+            "(() => { const c = Array.from(document.querySelectorAll('[data-testid^=agent-card-]'))"
+            f"   .find(c => c.textContent.includes({needle!r})); if (!c) return false;"
+            " c.click(); return true; })()"
+        )
+
+    check("the pasted-file conversation is on screen", open_card_with("Voici le diff complet") is True)
+    time.sleep(0.6)
+    folded = js(
+        "(() => { const p = document.querySelector('[data-testid=agent-detail-ask]');"
+        " return p ? p.scrollHeight > p.clientHeight + 1 : null; })()"
+    )
+    check("a long prompt arrives folded", folded is True, f"got {folded}")
+    check("and offers to unfold it", js("!!document.querySelector('[data-testid=agent-detail-ask-more]')"))
+    js("document.querySelector('[data-testid=agent-detail-ask-more]')?.click(); 1")
+    time.sleep(0.4)
+    whole = js(
+        "(() => { const p = document.querySelector('[data-testid=agent-detail-ask]');"
+        " return p ? p.scrollHeight <= p.clientHeight + 1 : null; })()"
+    )
+    check("unfolded, the whole prompt is there", whole is True, f"got {whole}")
+    shot("agentload-prompt")
+    js("document.querySelector('[data-testid=agent-detail-close]')?.click(); 1")
+    time.sleep(0.4)
+
+    check("a short conversation is on screen", open_card_with("Question 1 sur") is True)
+    time.sleep(0.6)
+    check("a short prompt grows no control",
+          js("!document.querySelector('[data-testid=agent-detail-ask-more]')"))
+
+    # WHAT THE MACHINE SAYS NOW, read when the card was clicked and kept nowhere. A branch
+    # is the example and the rule is general: anything that is a property of the machine
+    # rather than of the file is asked for on the gesture, because shown on a card it would
+    # be read as current and go stale the moment someone switches branches.
+    #
+    # The proof is the switch itself: this repository is in the throwaway home, so the
+    # bench is allowed to move it between two looks at the SAME conversation.
+    repo = os.path.join(os.environ.get("HOME", ""), "repo")
+
+    def live_text():
+        for _ in range(40):
+            out = js("document.querySelector('[data-testid=agent-detail-live]')?.textContent || ''")
+            if out and "Reading" not in out:
+                return out
+            time.sleep(0.25)
+        return out
+
+    out = live_text()
+    check("the machine answers with the branch it is on", "main" in out, f"got {out!r}")
+    check("and whether the tree is clean", "clean" in out or "uncommitted" in out, f"got {out!r}")
+    check("and names the directory it asked about", repo in out, f"got {out!r}")
+
+    # Moved on the machine, behind the panel's back.
+    x("git", "-C", repo, "checkout", "-q", "-b", "hotfix")
+    js("document.querySelector('[data-testid=agent-detail-live-again]')?.click(); 1")
+    time.sleep(0.5)
+    out = live_text()
+    check("asking again follows the machine", "hotfix" in out, f"got {out!r}")
+
+    # AND NOTHING IS KEPT: closing and reopening the same card asks the machine again
+    # rather than showing what the last look found.
+    x("git", "-C", repo, "checkout", "-q", "main")
+    js("document.querySelector('[data-testid=agent-detail-close]')?.click(); 1")
+    time.sleep(0.4)
+    check("the same card reopens", open_card_with("Question 1 sur") is True)
+    time.sleep(0.5)
+    out = live_text()
+    check("and it is read again, not remembered", "main" in out and "hotfix" not in out,
+          f"got {out!r}")
+    shot("agentload-live")
+
+    # The other answer the panel has to be able to give, on the conversation seeded with a
+    # directory that does not exist. "Not a git repository" there would be false.
+    js("document.querySelector('[data-testid=agent-detail-close]')?.click(); 1")
+    time.sleep(0.4)
+    check("the conversation with a vanished directory is on screen",
+          open_card_with("Question 2 sur") is True)
+    time.sleep(0.5)
+    out = live_text()
+    check("a directory that is gone says so, and not 'no repository'",
+          "gone" in out.lower() and "repositor" not in out.lower(), f"got {out!r}")
+    js("document.querySelector('[data-testid=agent-detail-close]')?.click(); 1")
+    time.sleep(0.4)
+    check("back on the one being deleted", open_card_with("Question 1 sur") is True)
+    time.sleep(0.6)
+
+    # DELETING ONE IS NOT OFFERED HERE, and that is the assertion. Removing a
+    # conversation is the strongest modification on this surface, so it goes with the
+    # rest of them when no vault is open (ADR 0033). The removal itself — the `rm` landing
+    # on the machine, the card going with it, and the name leaving the document Rite owns
+    # — is driven in `scenario_design`, which opens a vault on the way in.
+    check(
+        "deleting is not offered without a vault",
+        js("!document.querySelector('[data-testid=agent-detail-delete]')"),
+    )
+    js("document.querySelector('[data-testid=agent-detail-close]')?.click(); 1")
+    time.sleep(0.4)
+
+    # STARTING ONE, which is the other half: the tool run with no arguments, in the
+    # directory that was named. The seeded fake binary prints its own `$PWD` and stays
+    # up, so the pane itself says whether the directory arrived.
+    js("document.querySelector('[data-testid=agent-new-claude]')?.click(); 1")
+    time.sleep(0.6)
+    check("a band offers to start one", js("!!document.querySelector('[data-testid=agent-new-dialog]')"))
+    js(
+        "(() => { const i = document.querySelector('[data-testid=agent-new-cwd]');"
+        " const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;"
+        " set.call(i, 'relative/path');"
+        " i.dispatchEvent(new Event('input', { bubbles: true })); })()"
+    )
+    time.sleep(0.4)
+    check("a relative directory is refused before the machine sees it",
+          js("!!document.querySelector('[data-testid=agent-new-start]')?.disabled"))
+    js(
+        "(() => { const i = document.querySelector('[data-testid=agent-new-cwd]');"
+        " const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;"
+        f" set.call(i, {os.environ.get('HOME', '/root') + '/.codex'!r});"
+        " i.dispatchEvent(new Event('input', { bubbles: true })); })()"
+    )
+    time.sleep(0.4)
+    shot("agentload-new")
+    js("document.querySelector('[data-testid=agent-new-start]')?.click(); 1")
+    time.sleep(3.0)
+    pane = "\n".join(screen_text())
+    check("the agent started where it was told",
+          "cwd=" in pane and "/.codex" in pane, f"got {pane[-200:]!r}")
+    shot("agentload-started")
+
+    js("document.querySelector('[data-testid=toolbar-agents]')?.click(); 1")
+    time.sleep(0.8)
+    js("document.querySelector('[data-testid=agent-layout-rail]')?.click(); 1")
+    time.sleep(0.6)
+    shot("agentload-rail")
+
+
+def scenario_design(wid):
+    """WHAT ONLY THE REAL WEBVIEW CAN BREAK — geometry, in the binary, under WebKitGTK.
+
+    Run with RITE_BENCH_AGENTS=1, which seeds the conversations this needs.
+
+    Playwright drives the same React bundle this window renders, and that is where almost
+    every design regression is catchable. What it cannot say is whether WEBKITGTK lays it
+    out the same way: Playwright's chromium is not the engine that ships.
+
+    This exists because a defect got through exactly there. The label list was a popover,
+    absolutely positioned, inside a dialog whose body SCROLLS — and a scrolling box clips
+    an absolutely-positioned child, so the list opened and was cut off after one row. No
+    z-index reaches that; the clip is the overflow. It was found in a screenshot somebody
+    took, which is not a way to find things.
+
+    THE MODIFY DIALOG AND NOT THE MACHINE FORM: it is the screen the defect was actually
+    seen on, and the field in it is the same component either way.
+
+    IT OPENS A VAULT FIRST, which it did not have to before 0.2.9. A name, a colour and a
+    label are sealed under a key, so with no vault the manager offers no Modify at all and
+    there is no dialog to measure (`a_window_with_no_vault_keeps_no_marks_and_no_words`
+    holds that at the route, and `scenario_agentload` holds it on the screen). So this one
+    sets a master password on the way in — which is also closer to the window a reader is
+    looking at when they hit this geometry.
+
+    IT LEAVES THE VAULT OPEN BEHIND IT, and `bench.py` runs the scenarios named on the
+    command line in order against ONE Rite process. So `design` before `agentload` breaks
+    `agentload`, whose own claim is that no card offers to be renamed WITHOUT a vault. No
+    scenario mutated vault state before 0.2.9 and order never mattered; it does now.
+
+    Everything else belongs in the Playwright suite, which is faster and runs every gate.
+    """
+    print("\ndesign — geometry in the real webview")
+    focus(wid)
+
+    # A VAULT FIRST, because what this measures lives behind one. The setup screen is a
+    # modal on the workspace (base-first, ADR 0014), reached from the vault pastille; its
+    # two password fields are `#password` and `#confirmPassword`, and the submit is the
+    # form's only one. Driven by id rather than by test id because this screen has none —
+    # it is the first thing a person ever sees and nothing automated had needed it.
+    js("document.querySelector('[data-testid=vault-pastille]')?.click(); 1")
+    time.sleep(0.5)
+    js(
+        "(() => { const b = Array.from(document.querySelectorAll('button'))"
+        "   .find(b => /vault/i.test(b.textContent || '')); if (b) b.click(); })()"
+    )
+    time.sleep(0.8)
+    if js("!!document.querySelector('#password')"):
+        for sel, value in (("#password", "bench-vault-123"), ("#confirmPassword", "bench-vault-123")):
+            js(
+                "(() => { const i = document.querySelector('" + sel + "');"
+                " const set = Object.getOwnPropertyDescriptor("
+                "   window.HTMLInputElement.prototype, 'value').set;"
+                " set.call(i, 'bench-vault-123');"
+                " i.dispatchEvent(new Event('input', { bubbles: true })); })()"
+            )
+            time.sleep(0.3)
+        js("document.querySelector('form button[type=submit]')?.click(); 1")
+        time.sleep(2.5)
+    def probe_this_machine():
+        """The manager, this machine, probed. Needed twice: a reload closes all of it."""
+        js("document.querySelector('[data-testid=toolbar-agents]')?.click(); 1")
+        time.sleep(0.8)
+        js("document.querySelector('[data-testid=agent-machine]')?.click(); 1")
+        time.sleep(0.5)
+        js(
+            "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+            "   .find(o => o.textContent.trim() === 'This machine'); if (o) o.click(); })()"
+        )
+        time.sleep(0.5)
+        js("document.querySelector('[data-testid=agent-probe]')?.click(); 1")
+        time.sleep(3.0)
+
+    probe_this_machine()
+
+    # CHECKED HERE, AND NOT BEFORE THE MANAGER EXISTS. `agent-read-only` is the line the
+    # manager draws when it holds no key, so it is absent from a document that has no
+    # manager in it — asking before opening one reads absent either way and passes on a
+    # window with no vault at all, which is the assertion agreeing with a default.
+    check(
+        "a vault is open, which is what a name and a label need",
+        js("!document.querySelector('[data-testid=agent-read-only]')"),
+    )
+
+    cards = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
+    if not check("the probe found conversations to act on", cards > 0, f"{cards} cards"):
+        shot("design-no-cards")
+        return
+
+    # Open the dialog that holds the field.
+    js(
+        "(() => { const b = document.querySelector('[data-testid^=agent-rename-]');"
+        " if (b) b.click(); })()"
+    )
+    time.sleep(0.8)
+    if not check(
+        "the modify dialog opens",
+        js("!!document.querySelector('[data-testid=agent-labels-input]')"),
+    ):
+        shot("design-no-dialog")
+        return
+
+    # FOCUS AND THEN CLICK, and the order matters here in a way it does not in chromium:
+    # `HTMLElement.click()` dispatches a click but is not required to move focus, and the
+    # list opens on focus. A person clicking with a mouse focuses; a script calling
+    # `.click()` may not. Reported either way below, so a failure says which of the two it
+    # was rather than leaving the reader to guess.
+    js(
+        "(() => { const i = document.querySelector('[data-testid=agent-labels-input]');"
+        " i.focus(); i.click(); return 1; })()"
+    )
+    time.sleep(0.5)
+    focused = js("document.activeElement?.dataset?.testid || document.activeElement?.tagName")
+    check("the field takes focus in this engine", focused == 'agent-labels-input', f"active: {focused}")
+    # The caret is the other way in, and it does not depend on focus at all.
+    if not js("!!document.querySelector('[data-testid=agent-labels-list]')"):
+        js("document.querySelector('[data-testid=agent-labels-toggle]')?.click(); 1")
+        time.sleep(0.4)
+        check(
+            "and the caret opens it when focus did not",
+            js("!!document.querySelector('[data-testid=agent-labels-list]')"),
+        )
+
+    # THE DEFECT, MEASURED: does what opened fit inside whatever scrolls above it?
+    cut = js(
+        "(() => { const l = document.querySelector('[data-testid=agent-labels-list]');"
+        " if (!l) return 'missing';"
+        " const r = l.getBoundingClientRect();"
+        " if (r.height < 4) return 'collapsed';"
+        " let a = l.parentElement;"
+        " while (a) { const s = getComputedStyle(a);"
+        "   if (/auto|scroll|hidden/.test(s.overflowY)) { const ar = a.getBoundingClientRect();"
+        "     return r.bottom > ar.bottom + 1 ? Math.round(r.bottom - ar.bottom) : 0; }"
+        "   a = a.parentElement; }"
+        " return 0; })()"
+    )
+    check("the list opens and nothing above it cuts it off", cut == 0, f"cut by {cut}")
+
+    # WORDS FIRST, OR THE MEASUREMENT IS OF NOTHING. This window opens with no vault, so
+    # the vocabulary starts empty and an empty list is 33px — which passes a "does not
+    # grow" check whether the cap works or not. That is the assertion agreeing with a
+    # default, so the scenario declares enough words for the list to be wrong about.
+    #
+    # Declared through the route Settings writes, because the field cannot invent a word:
+    # on a machine with no vault that list is a file this computer owns, which is the one
+    # place a word is declared in this context.
+    js(
+        "fetch('/api/admin/labels', { method: 'PUT',"
+        " headers: { 'content-type': 'application/json' },"
+        " body: JSON.stringify({ labels: ["
+        + ", ".join(f"'bench-{i}'" for i in range(8))
+        + "] }) }).then(r => r.status)"
+    )
+    time.sleep(0.8)
+    js("location.reload(); 1")
+    time.sleep(3.0)
+    # THE RELOAD CLOSED THE MANAGER, so the way back in is the way in. A card id captured
+    # before it would name an element this document never had.
+    probe_this_machine()
+    js(
+        "(() => { const b = document.querySelector('[data-testid^=agent-rename-]');"
+        " if (b) b.click(); })()"
+    )
+    time.sleep(0.8)
+    js("document.querySelector('[data-testid=agent-labels-input]')?.click(); 1")
+    time.sleep(0.5)
+
+    rows = js("document.querySelectorAll('[data-testid^=agent-labels-row-]').length")
+    check("the declared words are rows", rows >= 8, f"{rows} rows")
+    tall = js(
+        "(() => { const l = document.querySelector('[data-testid=agent-labels-list]');"
+        " return l ? Math.round(l.getBoundingClientRect().height) : -1; })()"
+    )
+    # Six rows of room, then it scrolls inside itself rather than pushing Save off the end.
+    check("the list stops at six rows and scrolls", 120 < tall <= 190, f"{tall}px")
+    check(
+        "and the rest is reachable by scrolling it",
+        js(
+            "(() => { const l = document.querySelector('[data-testid=agent-labels-list]');"
+            " return !!l && l.scrollHeight > l.clientHeight; })()"
+        ),
+    )
+
+    # Re-measured with the list at full height, which is when a clip would actually bite.
+    cut = js(
+        "(() => { const l = document.querySelector('[data-testid=agent-labels-list]');"
+        " if (!l) return 'missing';"
+        " const r = l.getBoundingClientRect(); let a = l.parentElement;"
+        " while (a) { const s = getComputedStyle(a);"
+        "   if (/auto|scroll|hidden/.test(s.overflowY)) { const ar = a.getBoundingClientRect();"
+        "     return r.bottom > ar.bottom + 1 ? Math.round(r.bottom - ar.bottom) : 0; }"
+        "   a = a.parentElement; }"
+        " return 0; })()"
+    )
+    check("and a full list is still not cut off", cut == 0, f"cut by {cut}")
+
+    # AND THE DIALOG'S OWN CONTROLS STILL TAKE THEIR CLICKS with the list open, which is
+    # the other half of the same question: `elementFromPoint` reads hit-testing directly,
+    # where a click cannot tell "covered" apart from "not there".
+    covered = js(
+        "(() => { const d = document.querySelector('[data-testid=agent-rename-dialog]');"
+        " if (!d) return ['no dialog'];"
+        " const out = [];"
+        " for (const b of Array.from(d.querySelectorAll('button'))) {"
+        "   const r = b.getBoundingClientRect(); if (!r.width || !r.height) continue;"
+        "   const x = r.left + r.width / 2, y = r.top + r.height / 2;"
+        "   if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) continue;"
+        # Scrolled away inside a list is not covered. `e2e/tests/support/hitTest.ts`
+        # carries the same rule and the reasoning for it.
+        "   let clipped = false;"
+        "   for (let a = b.parentElement; a; a = a.parentElement) {"
+        "     const cs = getComputedStyle(a);"
+        "     if (!/auto|scroll/.test(cs.overflowY) && !/auto|scroll/.test(cs.overflowX)) continue;"
+        "     const ar = a.getBoundingClientRect();"
+        "     clipped = y < ar.top || y > ar.bottom || x < ar.left || x > ar.right; break; }"
+        "   if (clipped) continue;"
+        "   const hit = document.elementFromPoint(x, y);"
+        "   if (hit !== b && !b.contains(hit) && !(hit && hit.contains(b)))"
+        "     out.push((b.textContent || '?').trim().slice(0, 16)); }"
+        " return out; })()"
+    )
+    check("every control in the dialog receives its own clicks", covered == [], f"{covered}")
+    print("  shot     ", shot("design-labels"))
+
+    # AND WHAT A REMOVAL DOES ON DISK, which moved here when the window that used to
+    # drive it stopped being allowed to: deleting a conversation is a modification, so it
+    # needs the vault this scenario now opens. The file is read back off the disk, because
+    # a screen that dropped the row without the `rm` landing would pass every assertion
+    # that only looks at the screen.
+    js("document.querySelector('[data-testid=agent-detail-close]')?.click(); 1")
+    time.sleep(0.3)
+    first = js(
+        "document.querySelector('[data-testid^=agent-card-]')"
+        "?.getAttribute('data-testid') || ''"
+    )
+    js(f"document.querySelector('[data-testid=\"{first}\"]')?.click(); 1")
+    time.sleep(0.8)
+    path = js(
+        "(() => { const d = document.querySelector('[data-testid=agent-detail]');"
+        " const m = d && d.textContent.match(/\\/[^\\s]*\\.jsonl/); return m ? m[0] : ''; })()"
+    )
+    if check("the panel names the file it would remove", path.endswith(".jsonl"), f"got {path!r}"):
+        before = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
+        js("document.querySelector('[data-testid=agent-detail-delete]')?.click(); 1")
+        time.sleep(0.6)
+        asked = js("document.querySelector('[data-testid=confirm-dialog]')?.textContent || ''")
+        # The path is IN the question, because it is the fact that settles it: one file,
+        # on one machine, named rather than described.
+        check("delete asks first, and names the file", path in asked, f"got {asked[:120]!r}")
+        js("document.querySelector('[data-testid=confirm-cancel]')?.click(); 1")
+        time.sleep(0.6)
+        check(
+            "and a cancel removes nothing",
+            os.path.exists(path)
+            and js("document.querySelectorAll('[data-testid^=agent-card-]').length") == before,
+        )
+
+        js("document.querySelector('[data-testid=agent-detail-delete]')?.click(); 1")
+        time.sleep(0.6)
+        js("document.querySelector('[data-testid=confirm-accept]')?.click(); 1")
+        time.sleep(2.0)
+        check("the file is gone", not os.path.exists(path), path)
+        after = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
+        check("and the card went with it", after == before - 1, f"{before} -> {after}")
+        check(
+            "and the panel closed on what no longer exists",
+            js("!document.querySelector('[data-testid=agent-detail]')"),
+        )
+        shot("design-deleted")
+
+
 SCENARIOS = {
+    "design": scenario_design,
     "probe": scenario_probe,
     "size": scenario_size,
     "accents": scenario_accents,
@@ -757,6 +1622,10 @@ SCENARIOS = {
     "picker": scenario_picker,
     "second": scenario_second,
     "clipboard": scenario_clipboard,
+    "rightpaste": scenario_rightpaste,
+    "rightcopy": scenario_rightcopy,
+    "agents": scenario_agents,
+    "agentload": scenario_agentload,
 }
 
 

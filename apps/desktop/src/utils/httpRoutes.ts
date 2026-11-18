@@ -76,6 +76,25 @@ const routes: Record<string, Route> = {
     return null;
   },
 
+  get_marks: () => json('/api/marks'),
+  set_marks: async (a) => {
+    await json('/api/marks', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ value: a.text }),
+    });
+    return null;
+  },
+  user_marks_get: () => json('/api/user/marks'),
+  user_marks_set: async (a) => {
+    await json('/api/user/marks', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ blob: a.blob }),
+    });
+    return null;
+  },
+
   get_layouts: () => json('/api/layouts'),
   set_layouts: async (a) => {
     await json('/api/layouts', {
@@ -370,6 +389,14 @@ const routes: Record<string, Route> = {
   },
   admin_set_dashboard_policy: async (a) => {
     await json('/api/admin/dashboard-policy', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(a),
+    });
+    return null;
+  },
+  admin_set_agent_policy: async (a) => {
+    await json('/api/admin/agent-policy', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(a),
@@ -674,6 +701,7 @@ const routes: Record<string, Route> = {
           jumps: a.jumps ?? [],
           collectionId: a.collectionId,
           itemId: a.itemId,
+          command: a.command,
         }),
       )
     ).sessionId,
@@ -686,7 +714,11 @@ const routes: Record<string, Route> = {
     (
       await json<{ sessionId: string }>(
         '/api/terminal/ssh',
-        post({ connectionId: a.connectionId, sessionSecret: a.sessionSecret }),
+        post({
+          connectionId: a.connectionId,
+          sessionSecret: a.sessionSecret,
+          command: a.command,
+        }),
       )
     ).sessionId,
 
@@ -698,10 +730,79 @@ const routes: Record<string, Route> = {
       )
     ).sessionId,
 
+  connect_local_program: async (a) =>
+    (
+      await json<{ sessionId: string }>(
+        '/api/terminal/local',
+        // `cwd` is where a NEW conversation starts; a resumed one names none and the
+        // tool reopens wherever it was.
+        post({ argv: a.argv, cwd: a.cwd }),
+      )
+    ).sessionId,
+
   run_preconnect: async (a) =>
     (await json<{ sessionId: string }>('/api/terminal/preconnect', post({ command: a.command })))
       .sessionId,
 
+  agent_probe_local: (a) => json('/api/agents/probe-local', post({ command: a.command })),
+
+  agent_manage_local: (a) => json('/api/agents/manage-local', post({ command: a.command })),
+
+  labels_get: () => json('/api/labels'),
+  labels_set: (a) =>
+    json('/api/admin/labels', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ labels: a.labels }),
+    }),
+
+  agent_manage: (a) =>
+    json(
+      '/api/agents/manage',
+      post({
+        connectionId: a.connectionId,
+        command: a.command,
+        sessionSecret: a.sessionSecret,
+      }),
+    ),
+  agent_manage_quick: (a) =>
+    json(
+      '/api/agents/manage-quick',
+      post({
+        host: a.host,
+        port: a.port,
+        username: a.username,
+        authMethod: a.authMethod,
+        jumps: a.jumps,
+        command: a.command,
+        collectionId: a.collectionId,
+        itemId: a.itemId,
+      }),
+    ),
+
+  agent_probe: (a) =>
+    json(
+      '/api/agents/probe',
+      post({
+        connectionId: a.connectionId,
+        command: a.command,
+        sessionSecret: a.sessionSecret,
+      }),
+    ),
+  agent_probe_quick: (a) =>
+    json(
+      '/api/agents/probe-quick',
+      post({
+        host: a.host,
+        port: a.port,
+        username: a.username,
+        authMethod: a.authMethod,
+        jumps: a.jumps,
+        command: a.command,
+        collectionId: a.collectionId,
+        itemId: a.itemId,
+      }),
+    ),
   machine_exec: (a) =>
     json(
       '/api/terminal/exec',
@@ -721,6 +822,8 @@ const routes: Record<string, Route> = {
         authMethod: a.authMethod,
         jumps: a.jumps ?? [],
         command: a.command,
+        collectionId: a.collectionId,
+        itemId: a.itemId,
       }),
     ),
 
@@ -745,7 +848,13 @@ const routes: Record<string, Route> = {
     json(`/api/local/collections/${a.id}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: a.name, color: a.color ?? null, folders: a.folders, hc: a.hc }),
+      body: JSON.stringify({
+        name: a.name,
+        color: a.color ?? null,
+        folders: a.folders,
+        hc: a.hc,
+        labels: a.labels,
+      }),
     }),
   local_delete_collection: async (a) =>
     json(`/api/local/collections/${a.id}`, { method: 'DELETE' }),
@@ -786,6 +895,8 @@ const routes: Record<string, Route> = {
         localPort: a.localPort,
         remoteHost: a.remoteHost,
         remotePort: a.remotePort,
+        collectionId: a.collectionId,
+        itemId: a.itemId,
       }),
     ),
   stop_forward: async (a) => {

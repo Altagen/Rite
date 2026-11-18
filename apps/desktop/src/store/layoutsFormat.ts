@@ -78,7 +78,13 @@ export interface LayoutError {
  * already uses between the mock and the app — and it beats a parser that accepts any
  * string and leaves a typo to be ignored in silence, with no line number.
  */
-export const FILE_COPY_MODES = ['chord', 'select', 'selectRightPaste', 'ctrlC'] as const;
+export const FILE_COPY_MODES = [
+  'chord',
+  'select',
+  'selectRightPaste',
+  'rightCopyPaste',
+  'ctrlC',
+] as const;
 export type FileCopyMode = (typeof FILE_COPY_MODES)[number];
 
 /**
@@ -561,15 +567,22 @@ function stripComment(line: string): string {
  * dialog and the editor safe to use on the same file.
  */
 export function replacePresetBlocks(text: string, presets: Preset[]): string {
+  return replaceBlocks(
+    text,
+    '[[preset]]',
+    presets
+      .map((p) =>
+        [`[[preset]]`, `name = ${quote(p.name)}`, `command = ${quote(p.command)}`].join('\n'),
+      )
+      .join('\n\n'),
+  );
+}
+
+/** Every block of one kind, replaced by `block`, with the rest of the file left alone. */
+function replaceBlocks(text: string, header: string, block: string): string {
   const lines = (text ?? '').split('\n');
   const isHeader = (line: string) => stripComment(line).trim().startsWith('[');
-  const isPresetHeader = (line: string) => stripComment(line).trim() === '[[preset]]';
-
-  const block = presets
-    .map((p) =>
-      [`[[preset]]`, `name = ${quote(p.name)}`, `command = ${quote(p.command)}`].join('\n'),
-    )
-    .join('\n\n');
+  const isPresetHeader = (line: string) => stripComment(line).trim() === header;
 
   const out: string[] = [];
   let written = false;

@@ -11,8 +11,7 @@ import { openSettings } from './support/headerBar';
  * cheatsheet says the new chord** — which it can only do by reading the same store.
  */
 
-const sheet = (page: import('@playwright/test').Page) =>
-  page.getByTestId('shortcuts-cheatsheet');
+const sheet = (page: import('@playwright/test').Page) => page.getByTestId('shortcuts-cheatsheet');
 const rows = (page: import('@playwright/test').Page) => page.getByTestId('cheatsheet-row');
 
 async function openCheatsheet(page: import('@playwright/test').Page) {
@@ -60,7 +59,9 @@ test('the cheatsheet lists every command, chord or not', async ({ page }) => {
   // cheatsheet teaches the keyboard — `Ctrl+Shift+W` closes a pane, and that is worth knowing
   // while no pane is open.
   await expect(rows(page).filter({ hasText: 'Close pane' })).toHaveCount(1);
-  await expect(rows(page).filter({ hasText: 'Close pane' }).locator('kbd')).toHaveText('Ctrl+Shift+W');
+  await expect(rows(page).filter({ hasText: 'Close pane' }).locator('kbd')).toHaveText(
+    'Ctrl+Shift+W',
+  );
 
   // And the one that ships without a chord is listed saying so, rather than left out:
   // that it exists and can be given one is the useful fact.
@@ -81,9 +82,9 @@ test('a remapped command shows its NEW chord in the cheatsheet', async ({ page }
 
   // The shipped default first, so the change below is a change and not a coincidence.
   await openCheatsheet(page);
-  await expect(
-    rows(page).filter({ hasText: 'Split horizontally' }).locator('kbd'),
-  ).toHaveText('Ctrl+Shift+H');
+  await expect(rows(page).filter({ hasText: 'Split horizontally' }).locator('kbd')).toHaveText(
+    'Ctrl+Shift+H',
+  );
   await closeCheatsheet(page);
 
   // Remap it through the screen a person would use.
@@ -93,9 +94,9 @@ test('a remapped command shows its NEW chord in the cheatsheet', async ({ page }
   // be showing Ctrl+Shift+H here, which is exactly the bug this app has already shipped
   // once in a tooltip.
   await openCheatsheet(page);
-  await expect(
-    rows(page).filter({ hasText: 'Split horizontally' }).locator('kbd'),
-  ).toHaveText('Ctrl+Alt+J');
+  await expect(rows(page).filter({ hasText: 'Split horizontally' }).locator('kbd')).toHaveText(
+    'Ctrl+Alt+J',
+  );
   await closeCheatsheet(page);
 
   // Put the default back, so no later test inherits a remap. Asserted, because a reset

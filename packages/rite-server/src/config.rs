@@ -70,6 +70,7 @@ pub const SETTINGS: &[(&str, Shape)] = &[
     ("healthcheck_policy", Shape::Policy),
     ("collection_policy", Shape::Policy),
     ("dashboard_policy", Shape::Policy),
+    ("agent_policy", Shape::Policy),
     ("layouts_policy", Shape::Policy),
     ("ssh_connect_timeout", Shape::Seconds),
 ];
@@ -93,6 +94,9 @@ pub fn policy_default(key: &str) -> Value {
             "minInterval": 60,
         }),
         "dashboard_policy" => json!({ "webui": true, "clients": true, "minInterval": 30 }),
+        // No `minInterval`: discovery is explicit — the user picks a machine and asks —
+        // so there is no periodic traffic to floor (ADR 0022 §3).
+        "agent_policy" => json!({ "webui": true, "clients": true }),
         // Two booleans, no third `enabled` flag: `enabled = false, webui = true` is a state
         // someone has to reconcile, and someone eventually reads the wrong one (ADR 0027).
         "layouts_policy" => json!({ "webui": true, "clients": true }),
@@ -410,7 +414,7 @@ pub fn validate(key: &str, value: &Value) -> Result<()> {
                 }
             }
         }
-        "layouts_policy" => {
+        "layouts_policy" | "agent_policy" => {
             for field in ["webui", "clients"] {
                 if value.get(field).is_some_and(|v| !v.is_boolean()) {
                     bail!("`{field}` must be true or false");
@@ -669,6 +673,24 @@ webui = false
         assert!(validate("layouts_policy", &json!({ "webui": "yes" })).is_err());
         assert!(validate("layouts_policy", &json!({ "clients": 1 })).is_err());
         assert!(validate("layouts_policy", &json!({ "webui": false })).is_ok());
+        // ADR 0022 §3: the same two booleans, and NO `minInterval` — discovery is
+        // explicit, so a floor would be a knob for traffic that is never automatic.
+        assert!(validate("agent_policy", &json!({ "webui": "yes" })).is_err());
+        assert!(validate("agent_policy", &json!({ "clients": false })).is_ok());
+        assert_eq!(policy_default("agent_policy").get("minInterval"), None);
+    }
+
+    #[test]
+    fn a_partially_declared_agent_policy_keeps_the_other_half() {
+        let path = write("agents", "[agent_policy]\nwebui = false\n");
+        let cfg = InstanceConfig::load_from(path.to_str(), &[]).unwrap();
+        let policy = cfg.get("agent_policy").unwrap();
+        assert_eq!(policy["webui"], json!(false), "what the file said");
+        assert_eq!(
+            policy["clients"],
+            json!(true),
+            "and the default underneath it"
+        );
     }
 
     #[test]
