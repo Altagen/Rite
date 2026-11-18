@@ -397,6 +397,17 @@ than waiting, not because anything is unresolved.
 - [ ] **TypeScript 5.9 → 7.0, with @types/node 24 → 26**, one PR, scheduled for 0.3.0. Two
       majors: expect real diagnostics changes across the frontend, which is a body of work
       rather than a bump. Tracked in #255.
+- [ ] **argon2 0.5 → 0.6**, its own PR. `password-hash` 0.6 redesigned the API rather than
+      renaming it: `SaltString` has left the root and `hash_password` no longer takes the
+      salt as a second argument, so this is a reworking of the password-hashing path
+      (ADR 0010's auth hash and the vault's master key) and not a bump. The safety net
+      exists and should be read while doing it — `cross_impl_vectors` in
+      `packages/crypto/src/vault.rs` pins the derived key in hex, so a changed default
+      fails rather than re-keying somebody's vault. Deliberately left out of 0.2.9, which
+      took chacha20poly1305 0.11 the same evening.
+- [ ] **rfd 0.17 → 0.18**, blocked on something that is not ours: rfd 0.18 needs
+      `gtk-sys 0.19` and `wry 0.57` reaches `gtk-sys 0.18` through `webkit2gtk`, while
+      cargo allows one package only to link the native `gtk-3`. Reopen when wry moves.
 
 ---
 
