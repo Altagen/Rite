@@ -496,6 +496,21 @@ check('an adapter with no placeholder gets the id appended, not dropped', () => 
   // not silently resume whatever conversation the tool picks by itself.
   const odd = { ...A('claude'), resume: 'claude --resume' };
   assert.equal(agentResumeCmd(odd, 'x-1'), 'claude --resume x-1');
+
+  // A DIRECTORY, WHEN ONE IS KNOWN. Same `cd … && exec` as a start, same quoting, and
+  // the id stays quoted inside it — a path and an id are both data.
+  assert.equal(
+    agentResumeCmd(A('claude'), '3f1c', '/srv/acme/api'),
+    "cd '/srv/acme/api' && exec claude --resume 3f1c",
+  );
+  assert.equal(
+    agentResumeCmd(A('claude'), 'a; rm -rf ~', "/srv/it's"),
+    "cd '/srv/it'\\''s' && exec claude --resume 'a; rm -rf ~'",
+  );
+  // Absent, empty and whitespace all mean "not known", and leave the line untouched.
+  for (const nothing of [undefined, '', '   ']) {
+    assert.equal(agentResumeCmd(A('claude'), '3f1c', nothing), 'claude --resume 3f1c');
+  }
 });
 
 console.log('\nremoving — the one command that cannot be taken back:');
@@ -635,7 +650,7 @@ check('a transcript adapter reads the directory out of the file, bounded', () =>
 
 check('a path adapter already knows the directory and opens no file', () => {
   const cmd = agentFactsCmd(A('grok'), { id: 'x', project: '/srv/acme/api', rank: 0 });
-  assert.ok(cmd.includes("/srv/acme/api"), cmd);
+  assert.ok(cmd.includes('/srv/acme/api'), cmd);
   assert.ok(!cmd.includes('head -c'), 'Grok decoded the path, so there is nothing to read');
 });
 

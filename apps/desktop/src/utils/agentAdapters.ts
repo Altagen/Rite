@@ -558,11 +558,23 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
  * out of file names rather than out of a runtime that restricts them. An adapter with no
  * `{id}` gets the id appended rather than silently dropped.
  */
-export function agentResumeCmd(adapter: ShippedAdapter, id: string): string {
+export function agentResumeCmd(adapter: ShippedAdapter, id: string, cwd?: string): string {
   const quoted = shellArg(id);
-  return adapter.resume.includes('{id}')
+  const line = adapter.resume.includes('{id}')
     ? adapter.resume.replace('{id}', quoted)
     : `${adapter.resume} ${quoted}`;
+  // A DIRECTORY, WHEN ONE IS KNOWN, and the same `cd … && exec` `agentStartCmd` uses: a
+  // resumed conversation reopens where it ran, not in the home directory the channel
+  // happens to land in. The tool finds the transcript by id either way, but everything it
+  // then DOES — reading a file, running a test, resolving its own project configuration —
+  // is relative to the directory, so resuming in the wrong one is a conversation about
+  // the wrong tree.
+  //
+  // Optional, because the directory is not always known: the listing does not carry it
+  // (Claude's slug is ambiguous, `DiscoveredConversation.project` says why) and only the
+  // live read reports it. Without one this is exactly what it was.
+  const dir = cwd?.trim();
+  return dir ? `cd ${shellArg(dir)} && exec ${line}` : line;
 }
 
 /**

@@ -830,15 +830,25 @@ export function Workspace({
     machine: ConnectionInfo | null,
     adapter: ShippedAdapter,
     conv: DiscoveredConversation,
+    /**
+     * Where to reopen it, when the manager knows — the live read's `cwd`, or whatever the
+     * person corrected it to. Absent is what every resume did before 0.2.10: the channel
+     * lands in the home directory and the tool works on whatever is there.
+     */
+    cwd?: string,
   ) => {
+    const dir = cwd?.trim() || undefined;
     try {
       // A null machine is THIS computer, and its session is a local PTY running the
       // program — argv rather than a command line, because `execvp` takes it as written
       // and a project path with a space in it is data. The SSH half names the program at
       // the channel for the same reason; only the transport differs.
       const sessionId = machine
-        ? await conns.connect(machine, agentResumeCmd(adapter, conv.id))
-        : await Backend.Terminal.connectLocalProgram(agentResumeArgv(adapter, conv.id));
+        ? await conns.connect(machine, agentResumeCmd(adapter, conv.id, dir))
+        : // The argv form takes the directory beside it rather than in it, for the reason
+          // `agentResumeArgv` gives: a local PTY passes arguments as written, so a `cd`
+          // folded into the line would arrive as an argument to the tool.
+          await Backend.Terminal.connectLocalProgram(agentResumeArgv(adapter, conv.id), dir);
       const session: TerminalSession = {
         id: sessionId,
         connectionId: machine?.id ?? 'local',
@@ -850,8 +860,10 @@ export function Workspace({
         conversationId: conv.id,
         // The project is what the tab is called, and a listing does not always give one.
         project: conv.project ?? conv.label ?? conv.id,
-        // Only when the path says it: Grok's decodes exactly, Claude's slug does not.
-        cwd: conv.project?.startsWith('/') ? conv.project : undefined,
+        // The directory it was REOPENED in when there is one — that is the fact, and it
+        // outranks the slug. Otherwise only when the path says it: Grok's decodes
+        // exactly, Claude's slug does not.
+        cwd: dir ?? (conv.project?.startsWith('/') ? conv.project : undefined),
         // Absent means this computer, which needs no name on screen.
         machine: machine?.name,
       });

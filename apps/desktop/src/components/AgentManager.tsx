@@ -141,6 +141,8 @@ interface Props {
     machine: ConnectionInfo | null,
     adapter: ShippedAdapter,
     conv: DiscoveredConversation,
+    /** Where to reopen it. Absent means wherever the channel lands, as before 0.2.10. */
+    cwd?: string,
   ) => void;
   /**
    * Start a conversation: the tool, and where it works. A null machine is this computer,
@@ -343,11 +345,12 @@ export function AgentManager({
    * conversation id on a host that has never heard of it.
    */
   const resume = useCallback(
-    (r: Row) =>
+    (r: Row, cwd?: string) =>
       onResume(
         r.on === LOCAL ? null : (connections.find((c) => c.id === r.on) ?? null),
         r.adapter,
         r.conv,
+        cwd,
       ),
     [connections, onResume],
   );
@@ -972,7 +975,7 @@ export function AgentManager({
             row={open1}
             on={nameOf(open1.on)}
             onClose={() => setOpen1(null)}
-            onResume={() => resume(open1)}
+            onResume={(cwd) => resume(open1, cwd)}
             onRename={canEnrich ? () => setRenaming(open1) : undefined}
             onDelete={canEnrich && canRemove(open1) ? () => void remove(open1) : undefined}
             readFacts={() => readFacts(open1)}
@@ -1093,7 +1096,8 @@ function Detail({
   declared?: readonly VocabWord[];
 
   onClose: () => void;
-  onResume: () => void;
+  /** Called with the directory the person settled on, or nothing when none is known. */
+  onResume: (cwd?: string) => void;
   /** Absent ⇒ there is no vault to keep a name in, so the action is not drawn. */
   onRename?: () => void;
   /** Absent when this tool's listing names no file to remove. */
@@ -1130,6 +1134,29 @@ function Detail({
    */
   const [facts, setFacts] = useState<AgentFacts | null | undefined>(undefined);
   const [factsError, setFactsError] = useState<string | null>(null);
+
+  /**
+   * WHERE REOPENING IT WILL PUT IT, which the person may correct before pressing Resume.
+   *
+   * Empty means "wherever the channel lands", which is what every resume did before
+   * 0.2.10 and still does from a card — a card has asked the machine nothing, so it has
+   * no directory to offer. Here there IS one: the live read reports the directory the
+   * conversation ran in, taken from the transcript rather than from the slug (which
+   * `DiscoveredConversation.project` explains cannot be turned back into a path).
+   *
+   * Editable because the read can be right and still not be what someone wants — a tree
+   * that moved, a worktree beside it, a conversation whose directory is gone.
+   *
+   * DERIVED, NOT SYNCHRONISED. `null` means nobody has typed, so the field shows whatever
+   * the read reported — including the moment it arrives, with no effect to copy it across
+   * and no render where the field is empty but the answer is in. The first keystroke takes
+   * ownership and the read stops speaking for it, which is what "it does not reset itself
+   * under your fingers" means. The effect this replaces was rejected by the React lint
+   * rule for exactly the right reason: a value computable during render was being pushed
+   * through state.
+   */
+  const [edited, setEdited] = useState<string | null>(null);
+  const dir = edited ?? facts?.cwd ?? '';
   const [turn, setTurn] = useState(0);
   useEffect(() => {
     // LIVE, AND DROPPED ON THE WAY OUT. The flag was here from the first version with
@@ -1342,13 +1369,30 @@ function Detail({
         </div>
       )}
 
+      {/* WHERE IT WILL REOPEN, above the button that does it, because it is part of that
+          gesture and not a setting: the next conversation gets its own answer. */}
+      <div className="flex items-center gap-2">
+        <label className="shrink-0 text-[11px] text-muted-foreground" htmlFor="agent-detail-dir">
+          {t('agent.resumeIn')}
+        </label>
+        <input
+          id="agent-detail-dir"
+          value={dir}
+          onChange={(e) => setEdited(e.target.value)}
+          spellCheck={false}
+          placeholder={t('agent.resumeInPlaceholder')}
+          className="h-7 min-w-0 flex-1 rounded-md border border-border bg-background px-2 font-mono text-[11px]"
+          data-testid="agent-detail-dir"
+        />
+      </div>
+
       {/* Resume keeps its word on it: it is what the panel is for, and the four beside it
           are variations on getting hold of the thing. Delete is last and apart, in the
           one colour on this screen that means a file goes away. */}
       <div className="flex flex-wrap items-center gap-1.5">
         <button
           type="button"
-          onClick={onResume}
+          onClick={() => onResume(dir)}
           disabled={deleting}
           className="flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
           data-testid="agent-detail-resume"
