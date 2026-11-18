@@ -102,6 +102,12 @@ audit_js() {
   # The threshold lives here and nowhere else. Both CI jobs named it themselves and both
   # then threw the result away — one with `|| true`, one with `continue-on-error: true` —
   # so the JavaScript audit had never been able to fail anything.
+  #
+  # ONE ADVISORY IS ALLOWED, in `pnpm-workspace.yaml` under `auditConfig.ignoreGhsas`,
+  # with the reason and the condition for removing it written beside it. Not in
+  # `package.json`: pnpm 11 stopped reading its `pnpm` field, and it says so in a warning
+  # rather than an error — so an exception put there is simply ignored and the audit stays
+  # red for a reason nobody can see.
   pnpm audit --audit-level=high
 }
 
