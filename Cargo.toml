@@ -13,6 +13,7 @@ edition = "2024"
 rust-version = "1.85"
 authors = ["Ange Cesari"]
 license = "MIT OR Apache-2.0"
+# Inherited with `repository.workspace = true` by each member, so the url lives once.
 repository = "https://github.com/Altagen/Rite"
 
 [workspace.dependencies]
@@ -51,9 +52,10 @@ sqlx = { version = "0.9", default-features = false, features = [
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# Error handling
+# Error handling. `anyhow` only: `thiserror` was declared here and in `rite-crypto` and
+# used by neither — `cargo` 1.100's `unused_dependencies` lint is what said so. Add it
+# back the day a crate wants a typed error enum, not before.
 anyhow = "1.0"
-thiserror = "2.0"
 
 # Utilities
 uuid = { version = "1.23", features = ["v4", "serde"] }

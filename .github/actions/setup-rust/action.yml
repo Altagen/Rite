@@ -1,7 +1,7 @@
 # Install the Rust the project is pinned to, rather than whatever `stable` is today.
 #
 # `dtolnay/rust-toolchain@stable` installs the current stable, and then the first
-# cargo invocation reads rust-toolchain.toml and makes rustup fetch 1.97.0 anyway —
+# cargo invocation reads rust-toolchain.toml and makes rustup fetch the pinned one anyway —
 # so every job paid for two toolchains, and the one the cache was keyed on was not
 # the one that did the work. This reads the channel from the file that owns it and
 # installs exactly that, which is what "ISO CI and local" has to mean to be worth

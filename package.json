@@ -7,7 +7,7 @@
   "license": "MIT OR Apache-2.0",
   "packageManager": "pnpm@11.11.0",
   "engines": {
-    "node": ">=24.0.0",
+    "node": ">=26.0.0",
     "pnpm": ">=11.0.0"
   },
   "scripts": {
@@ -27,6 +27,6 @@
     "@types/node": "^26.6.6",
     "husky": "^9.1.7",
     "prettier": "^3.10.1",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   }
 }

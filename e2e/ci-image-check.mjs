@@ -167,6 +167,54 @@ check('the release workflow publishes through one action version', () => {
   assert.equal(refs.size, 1, `publishing through ${[...refs].join(' and ')}`);
 });
 
+// The acceptance fixture compiles the binary INSIDE the ISO-CI image and then wraps it in
+// a base image of its own — so that base is not decoration, it is the glibc the binary has
+// to find at load. The two were written equal and drifted the moment the image moved to
+// 26.04: `ubuntu:24.04` carries GLIBC 2.39, a 26.04 build needs 2.43, and the failure is a
+// loader error in step 5 of the gate that reads as if the server were broken.
+check('the acceptance fixture runs the binary on the ubuntu that built it', () => {
+  const fixture = read('e2e/turnkey-acceptance.sh');
+  const m = fixture.match(/^FROM ubuntu:(\d+\.\d+)$/m);
+  assert.ok(m, 'e2e/turnkey-acceptance.sh no longer wraps the binary in a pinned ubuntu');
+  assert.equal(
+    m[1],
+    image,
+    `the fixture runs the server on ubuntu:${m[1]} while the image that compiles it is ` +
+      `ubuntu:${image} — an older base cannot load a binary built against a newer glibc`,
+  );
+});
+
+// The other half of "a local run and CI agree": not only the same distribution, but the
+// same WORK. This one was missing and it cost a false green — Dependabot #436 moved the
+// Containerfile to 25.10 and every CI tick came back successful, because the check that
+// holds the Containerfile and the runners to the same version is in `run-checks.sh` and
+// `run-checks.sh` was in no workflow. A gate nobody runs is a comment.
+check('the standalone checks run in CI, not only in the local gate', () => {
+  const callers = workflows.filter((f) => /\be2e\/run-checks\.sh\b/.test(read(`${WORKFLOWS}/${f}`)));
+  assert.ok(
+    callers.length > 0,
+    'no workflow runs e2e/run-checks.sh — the 69 checks would be local-only again',
+  );
+  for (const file of callers) {
+    const text = read(`${WORKFLOWS}/${file}`);
+    // The two ways a check runs and still cannot fail anything, both of which
+    // `scripts/audit.sh` was once called through (`e2e/audit-script-check.mjs`).
+    assert.doesNotMatch(
+      text,
+      /run-checks\.sh.*\|\|\s*true/,
+      `${file} runs the checks and discards the result`,
+    );
+    // The job block that holds it: from its own key to the next one at the same indent.
+    const jobs = text.split(/\n(?=  [a-z][a-z0-9_-]*:\n)/);
+    const owner = jobs.find((j) => /\be2e\/run-checks\.sh\b/.test(j));
+    assert.doesNotMatch(
+      owner,
+      /continue-on-error:\s*true/,
+      `${file} lets the job that runs the checks fail without failing the run`,
+    );
+  }
+});
+
 console.log(`\n${passed} checks passed (ubuntu ${image}, client on ${
   [...new Set(clientRunners.map((r) => r.value))].join(' + ')
 }, ${actions.size} actions)`);

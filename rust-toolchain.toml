@@ -7,5 +7,5 @@
 # two were only ever equal by luck. Pinning costs a deliberate bump when a new stable
 # brings something we want; it buys "it builds here" meaning "it builds there".
 [toolchain]
-channel = "1.97.0"
+channel = "1.100.0"
 components = ["rustfmt", "clippy"]

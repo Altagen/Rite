@@ -1,6 +1,6 @@
 # RITE — ISO-CI validation image
 #
-# Mirrors the environment of .github/workflows/ci.yml (runs-on: ubuntu-24.04)
+# Mirrors the environment of .github/workflows/ci.yml (runs-on: ubuntu-26.04)
 # so that a local `task check` / build passes iff CI passes.
 #
 # Build:   podman build -t rite-ci:local -f Containerfile .
@@ -8,20 +8,22 @@
 #            bash -lc "pnpm install && task check"
 #
 # Pinned to reproduce the CI toolchain:
-#   - Ubuntu 24.04            (the version every workflow pins. They used to ride
+#   - Ubuntu 26.04            (the version every workflow pins. They used to ride
 #                              ubuntu-latest, which GitHub moved to 26.04 between
 #                              2026-10-19 and 2026-11-19 — two runs of one commit could
-#                              land on different distributions. Moving this is a commit
-#                              that moves the workflows with it; e2e/ci-image-check.mjs
-#                              fails if the two disagree (ADR 0001). The release client
-#                              is built on an OLDER ubuntu on purpose: the build host's
-#                              glibc is the floor of the shipped binary.)
+#                              land on different distributions. This is the move to the
+#                              far side of that rollout, made as one commit with the
+#                              workflows; e2e/ci-image-check.mjs fails if the two
+#                              disagree (ADR 0001). The release client is built on an
+#                              OLDER ubuntu on purpose and STAYS on 22.04: the build
+#                              host's glibc is the floor of the shipped binary, and
+#                              26.04's 2.43 would refuse to start on the current LTS.)
 #   - Rust                   from rust-toolchain.toml, as CI does
 #   - Node.js                from .node-version, as CI does
 #   - pnpm                   from package.json `packageManager`, as CI does
 #   - cargo-audit            (Cargo Audit check)
 #   - go-task                (repo uses `task check`)
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     CARGO_TERM_COLOR=always \
@@ -62,14 +64,20 @@ RUN cargo install cargo-audit --locked
 # --- Node.js + pnpm -----------------------------------------------------------
 # Both versions come from the repo rather than from this file: .node-version is what
 # fnm/nvm read locally and what actions/setup-node reads in CI, and `packageManager`
-# in package.json is what corepack reads everywhere. The comment here used to say
-# "Node.js 20 + pnpm 8" while the lines installed 24 and 11 — which is exactly the
+# in package.json is the one place the pnpm version is written. The comment here used to
+# say "Node.js 20 + pnpm 8" while the lines installed 24 and 11 — which is exactly the
 # kind of drift copied version numbers invite.
 COPY .node-version /tmp/.node-version
 COPY package.json /tmp/package.json
 # The official tarball rather than nodesource: nodesource pins the MAJOR only, so the
 # image drifted to the latest 24.x while CI installed the exact version from the same
 # file — a divergence introduced by the very step meant to remove one.
+#
+# AND `npm i -g`, NOT COREPACK, since Node 26: the tarball no longer carries corepack at
+# all (24 shipped it, along with pnpm and yarn shims; 26's bin/ holds node, npm and npx
+# and nothing else), so `corepack enable` failed with "not found" and took the build with
+# it. `packageManager` is still the one place the version is written — it is read here
+# and handed to npm instead.
 RUN NODE_VERSION="$(tr -d '[:space:]' < /tmp/.node-version)" \
     && case "$(dpkg --print-architecture)" in \
          amd64) NODE_ARCH=x64 ;; \
@@ -78,8 +86,7 @@ RUN NODE_VERSION="$(tr -d '[:space:]' < /tmp/.node-version)" \
        esac \
     && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" \
          | tar -xJ -C /usr/local --strip-components=1 --exclude=CHANGELOG.md --exclude=LICENSE --exclude=README.md \
-    && corepack enable \
-    && corepack prepare "$(sed -n 's/.*"packageManager" *: *"\([^"]*\)".*/\1/p' /tmp/package.json)" --activate \
+    && npm i -g "$(sed -n 's/.*"packageManager" *: *"\([^"]*\)".*/\1/p' /tmp/package.json)" \
     && node --version && pnpm --version
 
 # --- go-task -----------------------------------------------------------------

@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [dependencies]
 argon2 = { workspace = true }
@@ -13,8 +14,9 @@ base64 = "0.23"
 dryoc = "2.0"
 zeroize = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
+# No `serde_json` and no `thiserror`: declared when this crate was created in 2025-12 and
+# never used by it — `cargo` 1.100's `unused_dependencies` lint is what finally said so.
+# Errors here are `anyhow`, and nothing in this crate serialises to JSON itself.
 anyhow = { workspace = true }
 
 [dev-dependencies]
