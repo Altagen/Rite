@@ -449,6 +449,27 @@ We aim to respond within 48 hours and will coordinate disclosure timeline.
 7. **Keep RITE updated** for security patches
 8. **Don't log credentials** (disable debug mode in production)
 
+## Upgrading to 0.2.9: two files 0.2.8 left in the clear
+
+0.2.8 and earlier kept a conversation's names, colours and labels — the marks document
+and the harvested vocabulary — in two JSON files beside the configuration:
+
+```
+~/.config/rite/marks.json
+~/.config/rite/labels.json
+```
+
+0.2.9 does not write them any more. A labelled conversation names a project and a
+customer, so those belong under a key: with a vault they are sealed in it, on a server
+they are sealed per account, and a window with NO vault keeps neither (ADR 0022 §6, as
+0.2.9 amends it).
+
+**It does not delete the files it already wrote**, and that is a decision rather than an
+oversight: deleting a file nobody asked Rite to delete is not something an upgrade should
+do quietly, and no installation of 0.2.8 is known to be in use. If one of yours is,
+**remove those two files by hand after upgrading** — Rite no longer reads them, so nothing
+is lost but the plaintext.
+
 ## Future Security Enhancements
 
 - [ ] Full database encryption (alternative to field-level)
