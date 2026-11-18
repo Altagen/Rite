@@ -3649,7 +3649,7 @@ dependencies = [
 
 [[package]]
 name = "rite-core"
-version = "0.2.8"
+version = "0.2.9"
 dependencies = [
  "anyhow",
  "argon2 0.5.3",
@@ -3673,7 +3673,7 @@ dependencies = [
 
 [[package]]
 name = "rite-crypto"
-version = "0.2.8"
+version = "0.2.9"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -3690,7 +3690,7 @@ dependencies = [
 
 [[package]]
 name = "rite-desktop"
-version = "0.2.8"
+version = "0.2.9"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -3711,7 +3711,7 @@ dependencies = [
 
 [[package]]
 name = "rite-server"
-version = "0.2.8"
+version = "0.2.9"
 dependencies = [
  "anyhow",
  "async-trait",
