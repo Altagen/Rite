@@ -49,6 +49,7 @@ function imageVersion() {
 }
 
 const WORKFLOWS = '.github/workflows';
+const ACTIONS = '.github/actions';
 const workflows = readdirSync(resolve(ROOT, WORKFLOWS)).filter((f) => f.endsWith('.yml'));
 
 /** Every `runs-on:` literal, by file. An `${{ … }}` expression resolves through a matrix. */
@@ -143,8 +144,19 @@ check('a shipped binary is built on an ubuntu no newer than the image', () => {
    once must be used at one version. It catches the next three as well. */
 function actionVersions() {
   const seen = new Map();
-  for (const file of workflows) {
-    for (const [, action, ref] of read(`${WORKFLOWS}/${file}`).matchAll(
+  // COMPOSITE ACTIONS COUNT. A step moved out of a workflow and into
+  // `.github/actions/<name>/action.yml` keeps its `uses:` lines, and those lines went on
+  // drifting out of sight: `build-server-binary` carries setup-node, pnpm and rust-cache
+  // for two workflows at once, so bumping one of them in `release.yml` and not there
+  // would leave the same action at two majors with nothing saying so.
+  const files = [
+    ...workflows.map((f) => `${WORKFLOWS}/${f}`),
+    ...readdirSync(resolve(ROOT, ACTIONS), { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => `${ACTIONS}/${d.name}/action.yml`),
+  ];
+  for (const file of files) {
+    for (const [, action, ref] of read(file).matchAll(
       /^\s*-?\s*uses:\s*([A-Za-z0-9_.-]+\/[A-Za-z0-9_./-]+)@([A-Za-z0-9_.-]+)\s*$/gm,
     )) {
       if (!seen.has(action)) seen.set(action, new Set());
