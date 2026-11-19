@@ -381,6 +381,97 @@ jobs:
       - name: Run the standalone checks
         run: sh e2e/run-checks.sh
 
+  # THE SERVER IMAGE, BUILT AND STARTED — because nothing else here builds it.
+  #
+  # `Containerfile.server` is the only artefact we ship that is a distribution rather
+  # than a binary, and until this job the first thing that ever built it was the release
+  # workflow: on two architectures, under emulation, at the one moment nobody wants to
+  # debug it. Every toolchain move it carries — the Rust and Node ARGs, the three Debian
+  # stages — was therefore validated by reading, or by someone building it by hand.
+  #
+  # IT STARTS THE IMAGE, which is the half a build cannot tell you. A binary compiled
+  # against one glibc and run on another fails at LOAD, so a builder stage moved without
+  # the runtime produces an image that builds perfectly and dies on `docker run`.
+  # `ci-image-check` holds the three stages to one Debian suite; this proves it.
+  #
+  # amd64 only, and deliberately: arm64 here means QEMU and the better part of an hour on
+  # every pull request, while the release builds both natively per architecture. What this
+  # job answers is whether the recipe is sound, not whether it cross-builds.
+  #
+  # WHILE IT IS WORTH ITS MINUTES. It was added during the 0.2.10 toolchain work (Ubuntu
+  # 26.04, Rust 1.100, Node 26, Debian trixie), where the image changed under every one of
+  # them. If this settles down and the job spends a year saying yes, it is a candidate for
+  # `pull_request` paths touching Containerfile.server and the manifests — not for
+  # deletion, since what it catches is invisible until a tag.
+  server-image:
+    name: 🐳 Server image
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # The same value the release passes, read the same way: the base image carries the
+      # pinned toolchain, so rustup has nothing to fetch.
+      - name: Read the pinned Rust version
+        id: rust-pin
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
+      - name: Build the image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Containerfile.server
+          platforms: linux/amd64
+          load: true
+          build-args: |
+            RUST_VERSION=${{ steps.rust-pin.outputs.channel }}
+            RITE_COMMIT=${{ github.sha }}
+          # Shared with the release job. Without it the dependency layer is rebuilt from
+          # scratch every run, which is where the time goes.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: rite-server:ci
+
+      - name: It starts, and is the release this commit says it is
+        run: |
+          set -eu
+          # The workspace version, not a dependency's — the same reading `version-check`
+          # does, and the number the server reports on /api/capabilities.
+          want="$(sed -n '/^\[workspace.package\]/,/^\[/p' Cargo.toml \
+                  | sed -n 's/^version *= *"\(.*\)"/\1/p' | head -1)"
+          test -n "$want"
+          docker run -d --rm --name rite-ci -p 127.0.0.1:1421:1421 rite-server:ci
+          payload=''
+          for _ in $(seq 1 60); do
+            payload="$(curl -fsS http://127.0.0.1:1421/api/capabilities || true)"
+            [ -n "$payload" ] && break
+            sleep 1
+          done
+          if [ -z "$payload" ]; then
+            echo "::error file=Containerfile.server::the image never answered /api/capabilities" >&2
+            docker logs rite-ci >&2 || true
+            exit 1
+          fi
+          echo "$payload"
+          got="$(printf '%s' "$payload" | jq -r .version)"
+          if [ "$got" != "$want" ]; then
+            echo "::error file=Containerfile.server::the image reports $got, Cargo.toml says $want" >&2
+            exit 1
+          fi
+          # The two properties the runtime stage carries that a build cannot show: it is
+          # not root, and a terminal opened from the web UI lands in the home and not /.
+          user="$(docker inspect -f '{{.Config.User}}' rite-server:ci)"
+          dir="$(docker inspect -f '{{.Config.WorkingDir}}' rite-server:ci)"
+          echo "user=$user workdir=$dir"
+          test "$user" = "rite"
+          test "$dir" = "/home/rite"
+
+      - name: Stop it
+        if: always()
+        run: docker rm -f rite-ci || true
+
   # Dependency review (PRs only)
   dependency-review:
     name: 🔍 Dependency Review
