@@ -10,7 +10,8 @@
  * Measured on the owner's running 0.2.6 instance before the fix, with `podman inspect`:
  * `workdir=/`, `user=rite`, `HOME=/home/rite`. The home was always defined and never used.
  *
- * TWO FILES CARRY THIS RECIPE. `Containerfile.server` builds what ships, and
+ * THREE FILES CARRY THIS RECIPE NOW. `Containerfile.runtime` creates the user and the
+ * home, `Containerfile.server` builds what ships on top of it, and
  * `e2e/turnkey-acceptance.sh` wraps an already-built binary in a fixture image because the
  * real one compiles from source on the same distribution. A fixture left in `/` would
  * accept the regression it exists to catch, so what this asserts is mostly that the two
@@ -39,6 +40,7 @@ const check = (name, fn) => {
 
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const SERVER = read('Containerfile.server');
+const RUNTIME = read('Containerfile.runtime');
 const TURNKEY = read('e2e/turnkey-acceptance.sh');
 const COMPOSE = read('deploy/compose.yml');
 
@@ -49,6 +51,28 @@ const homeIn = (text, what) => {
   return m[1];
 };
 
+/**
+ * Where the SHIPPED image's home is created — which is no longer always the same file.
+ *
+ * The runtime stage moved to `Containerfile.runtime` (a published base, so its single
+ * `apt-get` stops running twice per release), and the `useradd` went with it. This check
+ * read `Containerfile.server` for it and failed loudly when it vanished, which is the good
+ * outcome: a check that follows a line across a file boundary by assuming where it lives
+ * is one refactor away from reporting success for not looking.
+ *
+ * So it asks where the line actually is, and if `Containerfile.server` no longer creates
+ * the user it proves the base it inherits does — rather than reading another file on faith.
+ */
+function shippedHome() {
+  if (/useradd[^\n]*--home-dir/.test(SERVER)) return homeIn(SERVER, 'Containerfile.server');
+  assert.match(
+    SERVER,
+    /^FROM \S+rite-runtime:\S+ AS runtime$/m,
+    'Containerfile.server creates no rite user and does not build on the runtime base that does',
+  );
+  return homeIn(RUNTIME, 'Containerfile.runtime');
+}
+
 /** The working directory the image runs in, or null when it never sets one — which is `/`. */
 const workdirIn = (text) => {
   const all = [...text.matchAll(/^WORKDIR (\S+)$/gm)].map((m) => m[1]);
@@ -58,7 +82,7 @@ const workdirIn = (text) => {
 console.log('the server image starts a shell in the home:');
 
 check('the shipped image runs in the home it created', () => {
-  const home = homeIn(SERVER, 'Containerfile.server');
+  const home = shippedHome();
   assert.equal(
     workdirIn(SERVER),
     home,
@@ -83,16 +107,16 @@ check('the acceptance fixture runs where the shipped image does', () => {
 
 check('the home is the user the server runs as', () => {
   // A working directory the process cannot write to is the same defect one level down.
-  for (const [what, text] of [['Containerfile.server', SERVER], ['the fixture', TURNKEY]]) {
-    assert.ok(/^USER rite$/m.test(text), `${what} no longer drops to the rite user`);
-    assert.match(homeIn(text, what), /^\/home\/rite$/, `${what} moved the home`);
-  }
+  assert.ok(/^USER rite$/m.test(SERVER), 'Containerfile.server no longer drops to the rite user');
+  assert.ok(/^USER rite$/m.test(TURNKEY), 'the fixture no longer drops to the rite user');
+  assert.match(shippedHome(), /^\/home\/rite$/, 'the shipped image moved the home');
+  assert.match(homeIn(TURNKEY, 'the fixture'), /^\/home\/rite$/, 'the fixture moved the home');
 });
 
 check('the data volume mounts under that directory', () => {
   // Not decoration: it is what makes the starting directory somewhere with the member's
   // own files in it rather than an empty home.
-  const home = homeIn(SERVER, 'Containerfile.server');
+  const home = shippedHome();
   const mount = /rite-data:(\S+)/.exec(COMPOSE);
   assert.ok(mount, 'deploy/compose.yml no longer mounts the data volume');
   assert.ok(
