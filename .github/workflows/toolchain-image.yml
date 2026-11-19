@@ -107,7 +107,10 @@ jobs:
       - name: Say what to pin
         run: |
           set -eu
-          digest='${{ steps.tag.outputs.image }}@${{ steps.build.outputs.digest }}'
+          # TAG AND DIGEST, which is what `.github/toolchain-image` must carry: the digest
+          # is pulled, the tag is the hash `ci-image-check` recomputes. Printing only the
+          # digest would hand over a line that fails the check it is meant to satisfy.
+          digest='${{ steps.tag.outputs.ref }}@${{ steps.build.outputs.digest }}'
           {
             echo '## The toolchain image this run published'
             echo

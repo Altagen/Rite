@@ -21,6 +21,7 @@
  * Run: node e2e/ci-image-check.mjs
  */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -181,6 +182,61 @@ check('the acceptance fixture runs the binary on the ubuntu that built it', () =
     image,
     `the fixture runs the server on ubuntu:${m[1]} while the image that compiles it is ` +
       `ubuntu:${image} — an older base cannot load a binary built against a newer glibc`,
+  );
+});
+
+// THE PINNED TOOLCHAIN IMAGE IS THE ONE THESE FILES DESCRIBE.
+//
+// CI no longer installs a toolchain: four jobs run inside the image `Containerfile`
+// builds, pinned in `.github/toolchain-image` by tag AND digest. The digest is what gets
+// pulled. The tag is the hash of the image's inputs — and recomputing it here is what
+// closes the loop: edit `Containerfile`, `rust-toolchain.toml`, `.node-version` or the
+// `packageManager` line, forget to republish, and the jobs would validate that change
+// inside the environment it was meant to replace. Silently, and in the direction that
+// matters least — a Rust bump tested by the old Rust.
+//
+// The hash must match what the workflow computes in shell, byte for byte: the three files
+// concatenated, then the packageManager value and a newline (what `sed -n ...p` prints).
+check('the pinned toolchain image is the one these files describe', () => {
+  const pin = read('.github/toolchain-image')
+    .split('\n')
+    .map((l) => l.trim())
+    .find((l) => l && !l.startsWith('#'));
+  assert.ok(pin, '.github/toolchain-image pins nothing');
+  const m = pin.match(/^(\S+):([0-9a-f]{12})@(sha256:[0-9a-f]{64})$/);
+  assert.ok(
+    m,
+    `${pin} is not <image>:<12-hex tag>@sha256:<digest> — both halves are load-bearing`,
+  );
+  const pm = read('package.json').match(/"packageManager"\s*:\s*"([^"]*)"/);
+  assert.ok(pm, 'package.json no longer declares packageManager');
+  const h = createHash('sha256');
+  for (const f of ['Containerfile', 'rust-toolchain.toml', '.node-version']) {
+    h.update(readFileSync(resolve(ROOT, f)));
+  }
+  h.update(`${pm[1]}\n`);
+  const want = h.digest('hex').slice(0, 12);
+  assert.equal(
+    m[2],
+    want,
+    `the image is pinned at ${m[2]} but these files hash to ${want} — one of ` +
+      'Containerfile, rust-toolchain.toml, .node-version or packageManager changed ' +
+      'without the image being republished. Run the `Toolchain image` workflow and pin ' +
+      'the line it prints.',
+  );
+});
+
+check('no CI job installs what the image already carries', () => {
+  const ci = read(`${WORKFLOWS}/ci.yml`);
+  const jobs = ci.split(/\n(?=  [a-z][a-z0-9_-]*:\n)/);
+  const offenders = jobs
+    .filter((j) => /\bcontainer:\n\s+image:/.test(j))
+    .filter((j) => /apt-get install|setup-node@|pnpm\/action-setup@|actions\/setup-rust/.test(j))
+    .map((j) => j.trim().split('\n')[0]);
+  assert.deepEqual(
+    offenders,
+    [],
+    'a job runs in the toolchain image and still installs a toolchain beside it',
   );
 });
 
