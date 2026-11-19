@@ -39,10 +39,20 @@ permissions:
   contents: read
   packages: write
 
+# One at a time. The job below force-pushes a fixed branch; two runs doing that at once
+# would leave the pull request pointing at whichever finished last, with no way to tell.
+# Queued rather than cancelled: a run that already pushed an image must still say so.
+concurrency:
+  group: base-images
+  cancel-in-progress: false
+
 jobs:
   toolchain:
     name: 📦 Toolchain image
     runs-on: ubuntu-26.04
+    # Tag AND digest, in the one shape `.github/toolchain-image` accepts.
+    outputs:
+      pin: ${{ steps.tag.outputs.ref }}@${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v7
 
@@ -154,6 +164,8 @@ jobs:
   runtime:
     name: 🧱 Runtime image
     runs-on: ubuntu-26.04
+    outputs:
+      pin: ${{ steps.tag.outputs.ref }}@${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v7
 
@@ -218,6 +230,142 @@ jobs:
             echo "$digest"
             echo '```'
             echo
-            echo 'Put that line in `.github/runtime-image`; the server image builds FROM it.'
+            echo 'It is the `FROM … AS runtime` line of `Containerfile.server` — that line IS the pin.'
           } >> "$GITHUB_STEP_SUMMARY"
           echo "$digest"
+
+  # THE PIN, AS A PULL REQUEST.
+  #
+  # Publishing a digest nobody reads changes nothing. The two pins are files in this
+  # repository — `.github/toolchain-image` and the `FROM … AS runtime` line of
+  # `Containerfile.server` — and until they move, every job keeps compiling in the image
+  # from the week before. The run that publishes therefore also proposes the line, so that
+  # "weekly refresh" means the environment actually refreshes rather than the registry.
+  #
+  # A PULL REQUEST AND NOT A PUSH. Changing what the whole project builds in is exactly
+  # the kind of change that should arrive with evidence. The pull request runs the entire
+  # suite INSIDE the new image, so a base that breaks the build says so there, on a branch,
+  # instead of on `develop` under someone else's name. That is also why the pin is a file
+  # and not a floating tag: nothing moves without a run that proves it.
+  #
+  # ONLY FROM develop, main AND THE CLOCK. A push on a feature branch publishes an image
+  # too — built from a `Containerfile` that branch has and `develop` does not. Pinning that
+  # on `develop` would pin an environment whose recipe is not there, and `ci-image-check`
+  # would fail on `develop` by construction, since the tag is the hash of the recipe. Those
+  # runs publish and report; they propose nothing.
+  #
+  # ITS CHECKS NEED ONE CLICK. A pull request opened by a workflow using GITHUB_TOKEN
+  # creates its `pull_request` runs in an approval-required state — documented GitHub
+  # behaviour, not a misconfiguration, and the reason this needs no personal access token.
+  # Someone with write access presses "Approve and run" on the pull request page. Since
+  # `develop` requires six checks to merge, that click is not optional: a pin nobody
+  # approved is a pin that cannot land.
+  pin:
+    name: 📌 Propose the new pins
+    needs: [toolchain, runtime]
+    if: >-
+      github.event_name != 'push'
+      || github.ref == 'refs/heads/develop'
+      || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # develop, not the ref this run was triggered on: the pull request targets develop,
+      # so its branch has to start there or the diff carries whatever else main has.
+      - uses: actions/checkout@v7
+        with:
+          ref: develop
+
+      - name: Move both pins
+        id: edit
+        env:
+          TOOLCHAIN: ${{ needs.toolchain.outputs.pin }}
+          RUNTIME: ${{ needs.runtime.outputs.pin }}
+        run: |
+          set -eu
+          if [ -z "$TOOLCHAIN" ] || [ -z "$RUNTIME" ]; then
+            echo "::error::a build job produced no digest — nothing to pin" >&2
+            exit 1
+          fi
+
+          # The payload line, keeping every comment above it. `sed -i '1s'` would have
+          # overwritten the first line of the file, which is documentation.
+          awk -v new="$TOOLCHAIN" '
+            !done && !/^#/ && NF { print new; done = 1; next }
+            { print }
+          ' .github/toolchain-image > .github/toolchain-image.new
+          mv .github/toolchain-image.new .github/toolchain-image
+
+          sed -i -E "s|^FROM [^[:space:]]+/rite-runtime:[^[:space:]]+ AS runtime\$|FROM ${RUNTIME} AS runtime|" Containerfile.server
+
+          # VERIFIED, NOT ASSUMED. `sed` that matches nothing exits 0, so a renamed image
+          # or a reformatted FROM line would leave the old digest in place and this job
+          # would open a pull request claiming to move a pin it never touched.
+          if ! grep -qxF "FROM $RUNTIME AS runtime" Containerfile.server; then
+            echo "::error file=Containerfile.server::the runtime FROM line was not rewritten — its shape changed" >&2
+            exit 1
+          fi
+          if ! grep -qxF "$TOOLCHAIN" .github/toolchain-image; then
+            echo "::error file=.github/toolchain-image::the pin was not rewritten" >&2
+            exit 1
+          fi
+
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "develop already pins exactly what this run published — nothing to propose"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git --no-pager diff --stat
+          fi
+
+      # ONE BRANCH, REUSED. A branch per run would leave a stack of pull requests each
+      # pinning a digest older than the next, and merging the wrong one silently moves the
+      # environment backwards. This force-pushes the same branch, so the open pull request
+      # always carries the newest pair and there is never a second one to choose from.
+      - name: Open or update the pull request
+        if: steps.edit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOOLCHAIN: ${{ needs.toolchain.outputs.pin }}
+          RUNTIME: ${{ needs.runtime.outputs.pin }}
+        run: |
+          set -eu
+          branch=chore/base-images
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$branch"
+          git add .github/toolchain-image Containerfile.server
+          # Conventional Commits, lowercase subject: commitlint checks this pull request
+          # like any other, and a bot that cannot pass the repository's own rules is a bot
+          # whose pull requests sit there.
+          git commit -m 'build(ci): refresh the pinned base images'
+          git push --force origin "$branch"
+
+          body="$(cat <<BODY
+          The weekly rebuild published two new base images. This moves both pins to them.
+
+          - toolchain \`$TOOLCHAIN\`
+          - runtime \`$RUNTIME\`
+
+          Same recipes, rebuilt from scratch, so the packages inside are current. The tags
+          are unchanged apart from their date unless one of the recipes changed — the tag
+          is the hash of what the image is made of.
+
+          What makes this reviewable is that the checks on this pull request run IN the
+          toolchain image above, and build the server image FROM the runtime one. Green
+          here means the new environment builds this project; it is the only evidence that
+          matters, and it does not exist anywhere else.
+
+          Opened by \`.github/workflows/base-images.yml\`, run \`$GITHUB_RUN_ID\`.
+          BODY
+          )"
+
+          if [ -n "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
+            gh pr edit "$branch" --body "$body"
+            echo "updated the open pull request"
+          else
+            gh pr create --base develop --head "$branch" \
+              --title 'build(ci): refresh the pinned base images' --body "$body"
+          fi
