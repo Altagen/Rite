@@ -24,7 +24,7 @@ ARG RUST_VERSION=1.100.0
 ARG NODE_VERSION=26.13.1
 
 # --- Stage 1: build the frontend bundle ---
-FROM node:${NODE_VERSION}-bookworm-slim AS web
+FROM node:${NODE_VERSION}-trixie-slim AS web
 ENV CI=true
 WORKDIR /app
 # Manifests first: `pnpm install` re-runs when dependencies change, not when a
@@ -33,7 +33,7 @@ WORKDIR /app
 #
 # NOT COREPACK, since Node 26 dropped it: neither the official tarball nor this image
 # carries it any more (measured — `command -v corepack` is empty in
-# `node:26.13.1-bookworm-slim`), so `corepack enable` fails and takes the build with it.
+# `node:26.13.1-trixie-slim`), so `corepack enable` fails and takes the build with it.
 # The version is read out of the manifest and handed to npm instead, exactly as the
 # validation image does it.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -50,7 +50,7 @@ RUN pnpm --filter desktop build:frontend
 #   podman build -f Containerfile.server --build-arg RITE_COMMIT=$(git rev-parse --short HEAD) .
 ARG RITE_COMMIT=unknown
 ARG RUST_VERSION
-FROM rust:${RUST_VERSION}-bookworm AS builder
+FROM rust:${RUST_VERSION}-trixie AS builder
 ARG RITE_COMMIT
 ENV RITE_COMMIT=${RITE_COMMIT}
 WORKDIR /src
@@ -90,7 +90,17 @@ RUN find apps packages -name '*.rs' -exec touch {} + \
 # --- Stage 3: minimal runtime ---
 # Pinned by digest: there is no version in this tag to pin instead, and the runtime
 # is where a silently-changed base would ship. Dependabot's docker ecosystem moves it.
-FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS runtime
+# The digest is the INDEX's, not one architecture's manifest — the release builds this
+# image for amd64 and arm64 from the same line, and a per-arch digest would pin it to one
+# of them and fail the other. (`skopeo inspect --raw` returns the index; its sha256 is
+# this value.)
+#
+# TRIXIE, AND ALL THREE STAGES TOGETHER. Debian 13 is stable since 2025-08; bookworm is
+# oldstable and its security window is the shorter one. The three bases move as a set
+# because the binary built in the builder has to load in the runtime: rust:1.100.0-trixie
+# and debian:trixie-slim are both GLIBC 2.41, and a builder left on trixie over a bookworm
+# runtime (2.36) would fail at load, not at build.
+FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS runtime
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
