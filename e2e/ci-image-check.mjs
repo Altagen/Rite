@@ -55,14 +55,21 @@ const workflows = readdirSync(resolve(ROOT, WORKFLOWS)).filter((f) => f.endsWith
 function runners() {
   const found = [];
   for (const file of workflows) {
-    for (const [, value] of read(`${WORKFLOWS}/${file}`).matchAll(/^\s*runs-on:\s*(\S+)\s*$/gm)) {
-      if (!value.startsWith('${{')) found.push({ file, value });
+    // Per job, because a job that COMPILES A SHIPPED BINARY answers to a different rule.
+    // Its runner is chosen for its glibc — the build host's is the floor of what ships —
+    // not to mirror the CI image. The marker is the composite action that does the
+    // compiling, so the exemption follows the work rather than a list of job names.
+    for (const job of read(`${WORKFLOWS}/${file}`).split(/\n(?=  [a-z][a-z0-9_-]*:\n)/)) {
+      const ships = /build-server-binary/.test(job);
+      for (const [, value] of job.matchAll(/^\s*runs-on:\s*(\S+)\s*$/gm)) {
+        if (!value.startsWith('${{')) found.push({ file, value, ships });
+      }
     }
   }
   return found;
 }
 
-/** Every `os: ubuntu-…` inside a build matrix — what the client is compiled on. */
+/** Every `os: ubuntu-…` inside a build matrix — the client, and the server binary. */
 function matrixRunners() {
   const found = [];
   for (const file of workflows) {
@@ -81,8 +88,9 @@ const rank = (label) => {
 };
 
 const image = imageVersion();
-const ubuntuRunners = runners().filter((r) => r.value.startsWith('ubuntu'));
-const clientRunners = matrixRunners();
+const ubuntuRunners = runners().filter((r) => r.value.startsWith('ubuntu') && !r.ships);
+// A matrix `os:` plus any job whose runner was picked for its glibc.
+const shippedRunners = [...matrixRunners(), ...runners().filter((r) => r.ships)];
 
 console.log(`the CI image and the workflows agree (Containerfile: ubuntu:${image}):`);
 
@@ -115,9 +123,9 @@ check('every pinned runner is the version the Containerfile builds', () => {
   );
 });
 
-check('the client is built on an ubuntu no newer than the image', () => {
-  assert.ok(clientRunners.length > 0, 'the release client matrix names no ubuntu runner');
-  const newer = clientRunners.filter((r) => rank(r.value) > rank(`ubuntu-${image}`));
+check('a shipped binary is built on an ubuntu no newer than the image', () => {
+  assert.ok(shippedRunners.length > 0, 'no build matrix names an ubuntu runner');
+  const newer = shippedRunners.filter((r) => rank(r.value) > rank(`ubuntu-${image}`));
   assert.equal(
     newer.length,
     0,
@@ -251,27 +259,85 @@ check('no CI job installs what the image already carries', () => {
 // production wearing the mask of a broken server. The node stage is in the set because
 // its bundle is what rust-embed compiles in.
 //
-// The runtime stage used to name its Debian here; it names a published image now, so this
-// reads the suite out of the file that base is built from. A check that silently stops
-// having anything to compare is worse than no check.
-check('the server image builds and runs on one Debian', () => {
-  const server = read('Containerfile.server');
-  const stages = [
-    [server, /^FROM node:\$\{NODE_VERSION\}-([a-z]+)-slim /m, 'the bundle stage'],
-    [server, /^FROM rust:\$\{RUST_VERSION\}-([a-z]+) /m, 'the builder stage'],
-    [read('Containerfile.runtime'), /^FROM debian:([a-z]+)-slim@sha256:[0-9a-f]{64}$/m, 'the runtime base'],
-  ].map(([text, re, what]) => {
-    const m = text.match(re);
-    assert.ok(m, `${what} no longer names a Debian suite the usual way`);
-    return { what, suite: m[1] };
-  });
-  const suites = [...new Set(stages.map((x) => x.suite))];
-  assert.equal(
-    suites.length,
-    1,
-    stages.map((x) => `${x.what} on ${x.suite}`).join(', ') +
-      ' — the binary has to find the glibc it was compiled against',
+// THE BINARY IS BUILT ON A GLIBC THE RUNTIME BASE CAN SATISFY.
+//
+// This replaces "every stage names the same Debian", which answered the question by
+// construction: the binary was compiled inside the image, on the distribution it would
+// run on, so there was nothing to compare. It is compiled on a GitHub runner now and run
+// on the Debian base below, and a binary cannot find a glibc OLDER than the one it was
+// linked against. The build host's glibc is therefore the floor of what ships.
+//
+// A VIOLATION DOES NOT FAIL THE BUILD, IT FAILS THE START. The image assembles perfectly,
+// and `docker run` then prints a loader error about a version not found — naming a
+// library, never a workflow file. That is why this lives here, in a check that runs on
+// every commit, rather than in a comment next to the runner label.
+//
+// THE NUMBERS ARE THE DISTRIBUTIONS', not a binary's observed symbols: `ubuntu-22.04`
+// ships 2.35 (Launchpad) and Debian trixie ships 2.41 (packages.debian.org). An unknown
+// name is a failure rather than a pass, because the whole point is that nobody should be
+// able to move either end by hand without this saying something.
+const GLIBC = {
+  'ubuntu-20.04': [2, 31],
+  'ubuntu-22.04': [2, 35],
+  'ubuntu-24.04': [2, 39],
+  'ubuntu-26.04': [2, 43],
+  bullseye: [2, 31],
+  bookworm: [2, 36],
+  trixie: [2, 41],
+};
+
+const glibc = (name, what) => {
+  // `ubuntu-22.04-arm` is the same distribution on another architecture.
+  const key = name.replace(/-arm$/, '');
+  const v = GLIBC[key];
+  assert.ok(v, `${what} is ${name}, whose glibc this check does not know — add it to GLIBC`);
+  return v;
+};
+
+const show = ([a, b]) => `${a}.${b}`;
+const le = ([a, b], [c, d]) => a < c || (a === c && b <= d);
+
+// Every job that compiles rite-server, wherever it is declared. Both workflows build it
+// the same way, through the same composite action — so both have to be read, or a runner
+// bumped in one of them would sail past.
+const serverBuilders = () => {
+  const found = [];
+  const release = read(`${WORKFLOWS}/release.yml`);
+  const job = release.split(/\n(?=  [a-z][a-z0-9_-]*:\n)/).find((j) => j.startsWith('  build-server:'));
+  assert.ok(job, 'release.yml no longer has a build-server job');
+  for (const m of job.matchAll(/^\s+os:\s*(\S+)$/gm)) found.push([m[1], 'release.yml build-server']);
+
+  const ci = read(`${WORKFLOWS}/ci.yml`);
+  const cj = ci.split(/\n(?=  [a-z][a-z0-9_-]*:\n)/).find((j) => j.startsWith('  server-binary:'));
+  assert.ok(cj, 'ci.yml no longer has a server-binary job');
+  // In a container, the runner label says nothing about the glibc the compiler links
+  // against — the image's does. The job must stay on the bare runner it names.
+  assert.ok(
+    !/\bcontainer:\n/.test(cj),
+    'ci.yml server-binary runs in a container, so its runs-on no longer decides the glibc',
   );
+  const r = cj.match(/^\s+runs-on:\s*(\S+)$/m);
+  assert.ok(r, 'ci.yml server-binary names no runner');
+  found.push([r[1], 'ci.yml server-binary']);
+
+  assert.ok(found.length >= 3, `only ${found.length} server build hosts found — expected two in the release and one in CI`);
+  return found;
+};
+
+check('the server binary is built on a glibc the runtime base can satisfy', () => {
+  const base = read('Containerfile.runtime').match(/^FROM debian:([a-z]+)-slim@sha256:[0-9a-f]{64}$/m);
+  assert.ok(base, 'Containerfile.runtime no longer names a Debian suite the usual way');
+  const ceiling = glibc(base[1], 'the runtime base');
+
+  for (const [host, where] of serverBuilders()) {
+    const floor = glibc(host, `${where}'s runner`);
+    assert.ok(
+      le(floor, ceiling),
+      `${where} builds on ${host} (glibc ${show(floor)}) but the image runs on debian ` +
+        `${base[1]} (glibc ${show(ceiling)}) — the binary would fail to START, from the ` +
+        'loader, with an error naming no workflow',
+    );
+  }
 });
 
 // AND THE RUNTIME BASE IT IS PINNED TO IS THE ONE THAT FILE DESCRIBES. Same closure as the
@@ -330,6 +396,6 @@ check('the standalone checks run in CI, not only in the local gate', () => {
   }
 });
 
-console.log(`\n${passed} checks passed (ubuntu ${image}, client on ${
-  [...new Set(clientRunners.map((r) => r.value))].join(' + ')
+console.log(`\n${passed} checks passed (ubuntu ${image}, shipped binaries on ${
+  [...new Set(shippedRunners.map((r) => r.value))].join(' + ')
 }, ${actions.size} actions)`);

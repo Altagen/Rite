@@ -211,10 +211,70 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Build and push the multi-arch rite-server image to GHCR
+  # THE SERVER BINARY, BUILT WHERE IT RUNS.
+  #
+  # One job per architecture, each on a runner of that architecture — `ubuntu-22.04-arm`
+  # is a native arm64 runner this very workflow already uses for the Linux ARM64 client.
+  # The image job below then has nothing to compile, and nothing to emulate.
+  #
+  # WHAT THIS REPLACES. The image used to compile the workspace itself, which meant
+  # compiling it once per architecture from one amd64 runner — so the arm64 half ran under
+  # QEMU. Measured on the 0.2.10 rehearsal: 49m52 for the dependency layer and 17m03 for
+  # the final build, against 7m00 and 3m21 for the same work native. Sixty-seven of that
+  # job's seventy-three minutes were emulation, and the two architectures ran in sequence
+  # inside one job rather than side by side in two.
+  #
+  # ubuntu-22.04 AND NOT 26.04, deliberately, and this is the one number here that must not
+  # be bumped casually. The build host's glibc is the FLOOR of the binary: 22.04 carries
+  # 2.34 and the runtime base is Debian trixie at 2.41, so the binary finds what it needs.
+  # A newer runner would raise the floor above the base, and the image would fail to START
+  # rather than to build — the error arrives at `docker run`, from the loader, and says
+  # nothing about a workflow file. `e2e/ci-image-check.mjs` compares the two ends so that
+  # the drift is caught in a pull request instead of in a published image.
+  #
+  # NO apt. rite-server is GUI-free and speaks rustls, so it needs no GTK, no WebKit and no
+  # OpenSSL — unlike the desktop client above, which installs three packages. With this
+  # job, the server path runs no `apt-get` on a blocking runner at all.
+  build-server:
+    name: 🦀 Server binary (${{ matrix.arch }})
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            os: ubuntu-22.04
+          - arch: arm64
+            os: ubuntu-22.04-arm
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # How the binary is built lives in one place, because CI builds it the same way to
+      # prove the image starts. Two copies would drift, and the drift would only show up
+      # as a release whose image CI had never really tested.
+      - uses: ./.github/actions/build-server-binary
+        with:
+          cache-key: server-${{ matrix.arch }}
+
+      - name: Upload it
+        uses: actions/upload-artifact@v7
+        with:
+          name: server-binary-${{ matrix.arch }}
+          path: target/release/rite-server
+          # An artifact that silently uploads nothing would fail in the image job, three
+          # minutes later, as a missing COPY source.
+          if-no-files-found: error
+
+  # Assemble and push the multi-arch rite-server image to GHCR.
+  #
+  # NOTHING IS COMPILED HERE AND NOTHING IS EMULATED. `Containerfile.server` is a base, a
+  # COPY and six lines of metadata; `COPY` is performed by the builder rather than inside
+  # the target rootfs, so one amd64 runner assembles both architectures with no QEMU at
+  # all. There is no `setup-qemu-action` below, and that absence is the whole gain.
   build-server-image:
     name: 🐳 Server image
-    needs: create-release
+    needs: [create-release, build-server]
     runs-on: ubuntu-26.04
     permissions:
       contents: read
@@ -222,12 +282,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The name, and the tags it gets — which is not the same question. `latest` is a
-      # pointer anyone's `podman pull` follows and INSTALL.md hands out, so a prerelease
-      # must not move it: it was unconditional here, meaning the first `0.2.10-rc.1` would
-      # have made a release candidate the default image for every reader, and deleting the
-      # git tag afterwards would not have put it back. A tag carrying `-` is a prerelease,
-      # the same rule `create-release` already uses to set the prerelease flag.
       - name: Compute image name and tags
         id: img
         run: |
@@ -244,8 +298,27 @@ jobs:
             echo 'TAGS'
           } >> "$GITHUB_OUTPUT"
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+      # Laid out where `Containerfile.server` looks: dist/<arch>/rite-server, with <arch>
+      # spelled as BuildKit's TARGETARCH spells it. download-artifact gives each artifact
+      # its own directory named after the artifact, so the names are rearranged once, here,
+      # rather than encoded in two places that can disagree.
+      - name: Collect the binaries
+        uses: actions/download-artifact@v8
+        with:
+          pattern: server-binary-*
+          path: artifacts
+
+      - name: Lay them out for the COPY
+        run: |
+          set -eu
+          for arch in amd64 arm64; do
+            mkdir -p "dist/$arch"
+            mv "artifacts/server-binary-$arch/rite-server" "dist/$arch/rite-server"
+          done
+          # The executable bit does not survive artifact upload — files arrive 0644 — which
+          # is why the COPY sets the mode rather than trusting what is on disk here. Listed
+          # so that the next person reading a permission error sees it stated.
+          ls -l dist/amd64/rite-server dist/arm64/rite-server
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4
@@ -257,10 +330,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Read the pinned Rust version
-        id: rust-pin
-        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
-
+      # No build-args and no cache: there is nothing to parameterise and nothing to cache.
+      # The base comes from the registry and the only other layer is a 19 MB file.
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
@@ -268,17 +339,6 @@ jobs:
           file: Containerfile.server
           platforms: linux/amd64,linux/arm64
           push: true
-          # The base image carries the pinned toolchain, so rustup has nothing to
-          # fetch — once per architecture, under emulation for arm64.
-          build-args: |
-            RUST_VERSION=${{ steps.rust-pin.outputs.channel }}
-            RITE_COMMIT=${{ github.sha }}
-          # Layer cache across runs. Without it the dependency layer below is rebuilt
-          # from scratch every tag, which is where this job's hour goes: a full clean
-          # build of this workspace is six minutes natively, so the rest is cache that
-          # was never kept.
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           tags: ${{ steps.img.outputs.tags }}
 
   # Generate SBOM and consolidated checksums

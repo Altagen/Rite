@@ -1,107 +1,56 @@
 # rite-server production image — the team-deployment shell (ADR 0004/0005).
 #
-# Multi-stage: (1) build the frontend, (2) compile rite-server release with the
-# frontend embedded, (3) ship a minimal runtime. rite-server is GUI-free, so no
-# GTK/WebKit is needed here — unlike the desktop shell.
+# IT COMPILES NOTHING. The binary is built before this file is read, by a job per
+# architecture on a runner of that architecture, and handed here as an artifact. This
+# recipe is a base, a COPY and six lines of metadata.
+#
+# WHY THAT IS THE WHOLE POINT. It used to carry three stages: bundle the frontend,
+# compile the workspace, ship the result. Compiling inside the image meant compiling once
+# per architecture, and the release builds both from one amd64 runner — so the arm64 half
+# ran under QEMU. Measured on the 0.2.10 rehearsal: 49m52 for the dependency layer and
+# 17m03 for the final build, against 7m00 and 3m21 for the same work native. Sixty-seven
+# of the job's seventy-three minutes were emulation.
+#
+# Nothing here executes, so there is nothing to emulate: `COPY` is performed by the
+# builder, not inside the target rootfs, and one amd64 runner assembles both architectures
+# without QEMU at all.
+#
+# --chmod=0755 AND NOT A chmod LATER. Artifact upload does not keep the executable bit —
+# "File permissions are not maintained during zipped artifact upload", files arrive 644 —
+# so the binary would land here unrunnable and the image would fail at start with a
+# permission error that says nothing about where it came from. The mode is set by the COPY
+# itself, which also means no `RUN chmod` and therefore no emulation sneaking back in.
+#
+# THE GLIBC COUPLING MOVED, IT DID NOT GO AWAY. The binary used to be compiled on the same
+# Debian it runs on, so the question answered itself. It is now compiled on a GitHub runner
+# and run on the Debian below, and a binary cannot find a glibc older than the one it was
+# linked against. The floor of the build runner must therefore be at or below the runtime
+# base's. That is not visible in any single file, so `e2e/ci-image-check.mjs` holds the two
+# ends together and fails when they drift.
 #
 # Build:  podman build -f Containerfile.server -t rite-server:local .
+#         (after `cargo build --release -p rite-server`, with the binary placed at
+#          dist/<amd64|arm64>/rite-server — the workflows do exactly this.)
 # Run:    podman run --rm -p 1421:1421 rite-server:local
-#
-# Both build stages install their dependencies BEFORE copying the source, so a
-# change to our code does not invalidate the layer that compiled six hundred
-# crates. Paired with a registry cache in the release workflow, that is the
-# difference between recompiling the world on every tag — twice, since arm64 goes
-# through QEMU emulation — and recompiling four crates.
 
-# The Rust the project is pinned to (rust-toolchain.toml). A Containerfile cannot
-# read a file to choose its base image, so the release workflow passes this from
-# that file; the default below is for local builds and must track it.
-ARG RUST_VERSION=1.100.0
-# The Node the project is pinned to (.node-version), for the same reason and with the
-# same obligation: `node:24-...` was a floating major, so the bundle this image ships
-# was built by whatever 24.x the registry held that day, while the host and CI were
-# held to an exact version. The Pins job checks this against .node-version.
-ARG NODE_VERSION=26.13.1
-
-# --- Stage 1: build the frontend bundle ---
-FROM node:${NODE_VERSION}-trixie-slim AS web
-ENV CI=true
-WORKDIR /app
-# Manifests first: `pnpm install` re-runs when dependencies change, not when a
-# component does. `packageManager` in package.json is the one place the pnpm version is
-# written, so it comes from the repository like everywhere else (ADR 0020's neighbours).
-#
-# NOT COREPACK, since Node 26 dropped it: neither the official tarball nor this image
-# carries it any more (measured — `command -v corepack` is empty in
-# `node:26.13.1-trixie-slim`), so `corepack enable` fails and takes the build with it.
-# The version is read out of the manifest and handed to npm instead, exactly as the
-# validation image does it.
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN npm i -g "$(sed -n 's/.*"packageManager" *: *"\([^"]*\)".*/\1/p' package.json)"
-COPY apps/desktop/package.json apps/desktop/
-RUN pnpm install --frozen-lockfile
-COPY . .
-RUN pnpm --filter desktop build:frontend
-
-# --- Stage 2: compile rite-server with the embedded frontend ---
-# `.containerignore` excludes `.git`, so the build cannot ask what commit it is: a release
-# passes it. Without it the binary reports `unknown`, which is the honest answer and the
-# one a bug report can still work with.
-#   podman build -f Containerfile.server --build-arg RITE_COMMIT=$(git rev-parse --short HEAD) .
-ARG RITE_COMMIT=unknown
-ARG RUST_VERSION
-FROM rust:${RUST_VERSION}-trixie AS builder
-ARG RITE_COMMIT
-ENV RITE_COMMIT=${RITE_COMMIT}
-WORKDIR /src
-
-# The dependency graph, in a layer of its own. Manifests and a stub source tree are
-# enough to compile every third-party crate; our four compile in seconds afterwards.
-# The base image already carries the pinned toolchain, so copying rust-toolchain.toml
-# here costs nothing — rustup finds what it asks for instead of downloading it once
-# per architecture.
-COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
-COPY apps/desktop/shell/Cargo.toml apps/desktop/shell/
-COPY packages/crypto/Cargo.toml packages/crypto/
-COPY packages/rite-core/Cargo.toml packages/rite-core/
-COPY packages/rite-server/Cargo.toml packages/rite-server/
-# `web/` has to exist or rust-embed fails at compile time (assets.rs, ADR 0004);
-# empty is fine here, the real bundle arrives with the source below.
-RUN mkdir -p apps/desktop/shell/src packages/crypto/src packages/rite-core/src \
-             packages/rite-server/src packages/rite-server/web \
- && echo 'fn main() {}' > apps/desktop/shell/src/main.rs \
- && echo 'fn main() {}' > packages/rite-server/src/main.rs \
- && touch packages/crypto/src/lib.rs packages/rite-core/src/lib.rs \
-          packages/rite-server/src/lib.rs \
- && cargo build --release -p rite-server \
- && rm -rf apps packages
-
-COPY . .
-# rust-embed reads packages/rite-server/web at compile time (ADR 0004).
-COPY --from=web /app/apps/desktop/dist/. packages/rite-server/web/
-# Our own sources arrive carrying their repository timestamps, which are older than the
-# stub artefacts the cached layer above left in target/. Cargo judges freshness by mtime,
-# so without this it declares the empty stub libraries up to date and links against them —
-# rite-server then fails to find its own modules, and only because the layer was cached.
-# The first build after a clean never shows it, which is what makes it worth a comment.
-RUN find apps packages -name '*.rs' -exec touch {} + \
- && cargo build --release -p rite-server
-
-# --- Stage 3: minimal runtime ---
-# `Containerfile.runtime`, published by `.github/workflows/base-images.yml` and pinned
-# here by tag AND digest. The digest is what is pulled — a tag can be moved by anyone who
-# can push to the registry — and the tag is the hash of `Containerfile.runtime`, which
-# `ci-image-check` recomputes. Edit that file without republishing and CI says so, rather
-# than building this image on a base that no longer matches its recipe.
+# WHAT THE SHIPPED SERVER RUNS ON. The tag is the hash of `Containerfile.runtime`, so the
+# base and its recipe cannot drift apart unnoticed; the digest is what is actually pulled.
 #
 # THIS LINE IS THE PIN AND THERE IS NO SECOND COPY OF IT. A digest written in two places
 # is a digest that will disagree with itself.
 #
-# What left with it: `apt-get install ca-certificates` and the `useradd`, which used to run
-# here — twice per release under emulation, and once per pull request, since CI builds this
-# image too. They happen weekly now, when nobody is waiting.
+# What this base carries, so that nothing here has to: `ca-certificates` and the `rite`
+# user with its home. Both used to run in this file — twice per release under emulation,
+# and once per pull request, since CI builds this image too. They happen weekly now, when
+# nobody is waiting.
 FROM ghcr.io/altagen/rite-runtime:df96a51a6275-20261119@sha256:79d0d48dbc9116f759a7da54891f3939bd3328f1d90e7ebb2217e4b097202f33 AS runtime
-COPY --from=builder /src/target/release/rite-server /usr/local/bin/rite-server
+
+# BuildKit sets TARGETARCH per platform: `amd64` or `arm64`, the same spelling the build
+# jobs use for their artifact names. One COPY therefore serves both architectures, and a
+# missing binary fails the build here rather than producing an image that cannot start.
+ARG TARGETARCH
+COPY --chmod=0755 dist/${TARGETARCH}/rite-server /usr/local/bin/rite-server
+
 USER rite
 # The home, and not the default `/`. A local terminal opened from the web UI inherits this
 # process's working directory — nothing makes a shell go to $HOME on its own — so without

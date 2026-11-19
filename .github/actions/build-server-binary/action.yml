@@ -1,0 +1,64 @@
+# Compile rite-server with the frontend embedded — the one definition of how, called by
+# both the release and CI.
+#
+# ONE DEFINITION BECAUSE THERE ARE TWO CALLERS. The release builds this binary to ship it;
+# CI builds it to prove the image starts. Written out twice, the two would drift, and the
+# drift would be invisible until a release produced an image CI had never actually tested.
+#
+# NOT IN THE TOOLCHAIN IMAGE, and this is the one thing to understand before moving it.
+# Every other compiling job in CI runs inside `rite-ci`, which is Ubuntu 26.04 and carries
+# glibc 2.43. This binary runs on the Debian trixie runtime base, which carries 2.41 — and
+# a binary cannot find a glibc older than the one it was linked against. Built in the
+# toolchain image it would compile perfectly and fail at `docker run`, from the loader,
+# with a message naming no workflow. So it is built on the runner, whose version is chosen
+# for its glibc, and `e2e/ci-image-check.mjs` compares that choice against the base.
+#
+# NO apt. rite-server is GUI-free and speaks rustls: no GTK, no WebKit, no OpenSSL. The
+# desktop client needs three packages; this needs none, so nothing here can be held hostage
+# by an archive having a bad day.
+
+name: Build the server binary
+description: Compile rite-server for the host architecture, frontend embedded
+
+inputs:
+  cache-key:
+    description: Rust cache suffix, so two architectures do not share one cache
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version-file: '.node-version'
+
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v6
+
+    # Reads the channel from rust-toolchain.toml, like everything else here.
+    - uses: ./.github/actions/setup-rust
+
+    - name: Cache Rust dependencies
+      uses: Swatinem/rust-cache@v2
+      with:
+        key: ${{ inputs.cache-key }}
+
+    - name: Install pnpm dependencies
+      shell: bash
+      run: pnpm install
+
+    # The frontend is embedded in the binary at compile time (ADR 0004), so it has to
+    # exist before cargo runs. `scripts/embed-ui.sh` is what the client job and the local
+    # gate call — one script, not four copies of three lines.
+    - name: Build and embed frontend
+      shell: bash
+      run: |
+        pnpm --filter desktop build:frontend
+        sh scripts/embed-ui.sh
+
+    - name: Build the server binary
+      shell: bash
+      env:
+        RITE_COMMIT: ${{ github.sha }}
+      run: cargo build --release -p rite-server
