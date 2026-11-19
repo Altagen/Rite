@@ -203,10 +203,13 @@ check('the pinned toolchain image is the one these files describe', () => {
     .map((l) => l.trim())
     .find((l) => l && !l.startsWith('#'));
   assert.ok(pin, '.github/toolchain-image pins nothing');
-  const m = pin.match(/^(\S+):([0-9a-f]{12})@(sha256:[0-9a-f]{64})$/);
+  // `<hash>-<YYYYMMDD>`: the date is what makes a published tag immutable. Reusing a
+  // tag untagged the previous manifest, GHCR collected it, and every pinned digest
+  // stopped resolving at once — on a Monday it would have been every week.
+  const m = pin.match(/^(\S+):([0-9a-f]{12})-(\d{8})@(sha256:[0-9a-f]{64})$/);
   assert.ok(
     m,
-    `${pin} is not <image>:<12-hex tag>@sha256:<digest> — both halves are load-bearing`,
+    `${pin} is not <image>:<12-hex>-<YYYYMMDD>@sha256:<digest> — all three parts carry something`,
   );
   const pm = read('package.json').match(/"packageManager"\s*:\s*"([^"]*)"/);
   assert.ok(pm, 'package.json no longer declares packageManager');
@@ -278,11 +281,11 @@ check('the server image builds and runs on one Debian', () => {
 // invisible, since it builds perfectly either way.
 check('the pinned runtime base is the one Containerfile.runtime describes', () => {
   const m = read('Containerfile.server').match(
-    /^FROM (\S+rite-runtime):([0-9a-f]{12})@(sha256:[0-9a-f]{64}) AS runtime$/m,
+    /^FROM (\S+rite-runtime):([0-9a-f]{12})-(\d{8})@(sha256:[0-9a-f]{64}) AS runtime$/m,
   );
   assert.ok(
     m,
-    'the runtime stage no longer reads `FROM <image>:<12-hex>@sha256:<digest> AS runtime`',
+    'the runtime stage no longer reads `FROM <image>:<12-hex>-<YYYYMMDD>@sha256:<digest> AS runtime`',
   );
   const want = createHash('sha256')
     .update(readFileSync(resolve(ROOT, 'Containerfile.runtime')))
