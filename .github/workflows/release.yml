@@ -222,9 +222,27 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Compute image name (lowercased)
+      # The name, and the tags it gets — which is not the same question. `latest` is a
+      # pointer anyone's `podman pull` follows and INSTALL.md hands out, so a prerelease
+      # must not move it: it was unconditional here, meaning the first `0.2.10-rc.1` would
+      # have made a release candidate the default image for every reader, and deleting the
+      # git tag afterwards would not have put it back. A tag carrying `-` is a prerelease,
+      # the same rule `create-release` already uses to set the prerelease flag.
+      - name: Compute image name and tags
         id: img
-        run: echo "image=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/rite-server" >> $GITHUB_OUTPUT
+        run: |
+          image="ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/rite-server"
+          version="${GITHUB_REF#refs/tags/}"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          {
+            echo 'tags<<TAGS'
+            echo "$image:$version"
+            case "$version" in
+              *-*) echo "  $version is a prerelease — latest stays where it is" >&2 ;;
+              *) echo "$image:latest" ;;
+            esac
+            echo 'TAGS'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -261,9 +279,7 @@ jobs:
           # was never kept.
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          tags: |
-            ${{ steps.img.outputs.image }}:${{ needs.create-release.outputs.version }}
-            ${{ steps.img.outputs.image }}:latest
+          tags: ${{ steps.img.outputs.tags }}
 
   # Generate SBOM and consolidated checksums
   finalize:
