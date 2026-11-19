@@ -224,7 +224,7 @@ check('the pinned toolchain image is the one these files describe', () => {
     want,
     `the image is pinned at ${m[2]} but these files hash to ${want} — one of ` +
       'Containerfile, rust-toolchain.toml, .node-version or packageManager changed ' +
-      'without the image being republished. Run the `Toolchain image` workflow and pin ' +
+      'without the image being republished. Run the `Base images` workflow and pin ' +
       'the line it prints.',
   );
 });

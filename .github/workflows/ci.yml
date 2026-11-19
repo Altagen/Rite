@@ -17,7 +17,7 @@ permissions:
   security-events: write
   # Pulling the toolchain image: the package is private and lives beside this repository,
   # so GITHUB_TOKEN needs to be allowed to read it. Read only — the image is published by
-  # `toolchain-image.yml`, never from here.
+  # `base-images.yml`, never from here.
   packages: read
 
 jobs:
@@ -81,7 +81,7 @@ jobs:
   # 34m12s in another, because archive.ubuntu.com had stopped answering. Thirteen jobs,
   # each holding its own ticket against a server that is not ours.
   #
-  # So nothing is built here. `.github/workflows/toolchain-image.yml` publishes the image
+  # So nothing is built here. `.github/workflows/base-images.yml` publishes the image
   # weekly and on a change to what it is made of; this job reads the pinned line, checks
   # that it is really there, and hands it to the jobs below. Seconds.
   #
@@ -122,7 +122,7 @@ jobs:
         run: |
           set -eu
           if ! docker manifest inspect "${{ steps.pin.outputs.ref }}" >/dev/null 2>&1; then
-            echo "::error file=.github/toolchain-image::the pinned image is not in the registry — run the Toolchain image workflow and pin what it prints" >&2
+            echo "::error file=.github/toolchain-image::the pinned image is not in the registry — run the Base images workflow and pin what it prints" >&2
             exit 1
           fi
           echo "present"
