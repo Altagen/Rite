@@ -43,7 +43,7 @@
 # user with its home. Both used to run in this file — twice per release under emulation,
 # and once per pull request, since CI builds this image too. They happen weekly now, when
 # nobody is waiting.
-FROM ghcr.io/altagen/rite-runtime:df96a51a6275-20261119@sha256:79d0d48dbc9116f759a7da54891f3939bd3328f1d90e7ebb2217e4b097202f33 AS runtime
+FROM ghcr.io/altagen/rite-runtime:df96a51a6275-20261119@sha256:dfd3da4e5ea779b3b71c68fdd2b849e79418c71dec4088c0eaabc2810bcdcd2c AS runtime
 
 # BuildKit sets TARGETARCH per platform: `amd64` or `arm64`, the same spelling the build
 # jobs use for their artifact names. One COPY therefore serves both architectures, and a

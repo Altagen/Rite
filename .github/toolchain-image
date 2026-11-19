@@ -14,4 +14,4 @@
 #
 # To move it: run the `Toolchain image` workflow (it runs itself weekly, and on a push
 # that touches those files), then paste the line it prints here.
-ghcr.io/altagen/rite-ci:479f23fa17da-20261119@sha256:5d4b23dd90c8fb0d3d4010503de96196bf2582159bbc06e03c05c68b930ea42d
+ghcr.io/altagen/rite-ci:479f23fa17da-20261119@sha256:0e4815246964899ad06fc7c1651a936ba287672ea08638cc0623efb2931269e7

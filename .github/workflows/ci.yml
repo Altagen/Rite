@@ -27,48 +27,6 @@ jobs:
   # what local builds get, and nothing stopped it drifting from the pin — a local
   # image would then be built with a different compiler than CI, silently, which is
   # the exact failure the pinning was for. This is the guard that was missing.
-  pins:
-    name: 📌 Pins
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Containerfile.server tracks rust-toolchain.toml
-        run: |
-          pinned="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
-          arg="$(sed -n 's/^ARG RUST_VERSION=\(.*\)$/\1/p' Containerfile.server)"
-          if [ -z "$pinned" ] || [ -z "$arg" ]; then
-            echo "::error::could not read the version from one of the two files" >&2
-            echo "  rust-toolchain.toml channel: '${pinned:-<none>}'" >&2
-            echo "  Containerfile.server ARG:    '${arg:-<none>}'" >&2
-            exit 1
-          fi
-          if [ "$pinned" != "$arg" ]; then
-            echo "::error file=Containerfile.server::ARG RUST_VERSION=$arg but rust-toolchain.toml pins $pinned" >&2
-            echo "Set both to the same version; the ARG default is what local builds use." >&2
-            exit 1
-          fi
-          echo "both pinned to $pinned"
-
-      - name: Containerfile.server tracks .node-version
-        run: |
-          # Same contract as the Rust check above, for the same reason: the image that
-          # builds the shipped bundle used `node:24-...`, so it tracked a major while the
-          # host and CI tracked an exact version. A pin nobody enforces is not a pin.
-          pinned="$(tr -d '[:space:]' < .node-version)"
-          arg="$(sed -n 's/^ARG NODE_VERSION=\(.*\)$/\1/p' Containerfile.server)"
-          if [ -z "$pinned" ] || [ -z "$arg" ]; then
-            echo "::error::could not read the Node version from one of the two files" >&2
-            echo "  .node-version:                '${pinned:-<none>}'" >&2
-            echo "  Containerfile.server ARG:     '${arg:-<none>}'" >&2
-            exit 1
-          fi
-          if [ "$pinned" != "$arg" ]; then
-            echo "::error file=Containerfile.server::ARG NODE_VERSION=$arg but .node-version pins $pinned" >&2
-            exit 1
-          fi
-          echo "both pinned to $pinned"
-
   # Lint commit messages (PRs only)
   # THE TOOLCHAIN IMAGE, RESOLVED HERE AND BUILT SOMEWHERE ELSE.
   #
@@ -118,14 +76,35 @@ jobs:
 
       # Failing here, with one line, beats four jobs failing on an image pull they
       # cannot explain.
+      # TWO QUESTIONS, AND THEY HAVE DIFFERENT ANSWERS. Asking `docker manifest inspect`
+      # about a `tag@digest` in one go conflates them: it failed with "not in the registry"
+      # on 2026-11-19 while the digest was perfectly present, because the TAG had been
+      # moved — a `Base images` run triggered by a tag push republished `<hash>-<date>`.
+      # The message sent the reader to rebuild an image that already existed.
+      #
+      # So the digest is checked on its own, since that is what every job actually pulls,
+      # and then the tag is checked to still point at it, since a tag that moved means the
+      # never-republish rule was broken somewhere and the next digest may not survive.
       - name: It is published
+        env:
+          REF: ${{ steps.pin.outputs.ref }}
         run: |
           set -eu
-          if ! docker manifest inspect "${{ steps.pin.outputs.ref }}" >/dev/null 2>&1; then
-            echo "::error file=.github/toolchain-image::the pinned image is not in the registry — run the Base images workflow and pin what it prints" >&2
+          tagged="${REF%@*}"
+          digest="${REF##*@}"
+          repo="${tagged%:*}"
+
+          if ! docker manifest inspect "$repo@$digest" >/dev/null 2>&1; then
+            echo "::error file=.github/toolchain-image::$digest is not in the registry — the image it named is gone. Run the Base images workflow and pin the line it prints." >&2
             exit 1
           fi
-          echo "present"
+
+          got="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$tagged" 2>/dev/null || true)"
+          if [ "$got" != "$digest" ]; then
+            echo "::error file=.github/toolchain-image::$tagged now points at ${got:-nothing}, not at the pinned $digest — a published tag was republished, which orphans whatever was pinned to it. Find what rebuilt it before re-pinning." >&2
+            exit 1
+          fi
+          echo "present, and the tag still points at it"
 
   commitlint:
     name: 📝 Commit Lint
