@@ -22,7 +22,19 @@ name: Base images
 
 on:
   # The four files the image is made of. Change one and the image is stale by definition.
+  #
+  # develop AND NOTHING ELSE. The tag is the hash of the recipe, so two branches holding
+  # the same recipe produce the same tag on the same day — and the second push republishes
+  # it. If the bytes differ by so much as an apt mirror's mood, the first manifest is
+  # untagged, GHCR collects it, and every pinned digest stops resolving at once. A release
+  # merge into `main` is precisely that case: the same Containerfile, hours later.
+  #
+  # So one branch publishes. A feature branch that changes the recipe gets its image when
+  # it reaches develop; before that, `ci-image-check` fails on it, which is the mechanism
+  # working, and `workflow_dispatch` is there for anyone who needs the image sooner.
   push:
+    branches:
+      - develop
     paths:
       - 'Containerfile'
       - 'Containerfile.runtime'
@@ -52,9 +64,18 @@ jobs:
     runs-on: ubuntu-26.04
     # Tag AND digest, in the one shape `.github/toolchain-image` accepts.
     outputs:
-      pin: ${{ steps.tag.outputs.ref }}@${{ steps.build.outputs.digest }}
+      pin: ${{ steps.say.outputs.pin }}
     steps:
+      # THE RECIPE THE PIN WILL SIT NEXT TO, which on a scheduled run is not the one
+      # checked out by default. A `schedule` fires from the default branch, so `main` is
+      # what lands here — and between two releases `main`'s Containerfile is not develop's.
+      # The tag is the hash of that file, and the pin goes to develop, so building from
+      # main would open a pull request whose own `ci-image-check` fails: the pin names one
+      # hash, develop's files hash to another. A dispatch keeps the branch it was asked
+      # from; a push is already restricted to develop.
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'develop' || github.ref }}
 
       # The tag is the hash of what goes into the image, so an unchanged toolchain keeps
       # its tag and a changed one cannot reuse it.
@@ -100,8 +121,32 @@ jobs:
       # A scheduled run REBUILDS even when the tag exists: that is the whole point of the
       # schedule — same recipe, newer packages, new digest. A push that changed nothing
       # relevant would otherwise rebuild for nothing, so only the clock forces it.
+      # A TAG IS NEVER REPUBLISHED, and two runs can legitimately land on the same one:
+      # the Monday rebuild publishes `<hash>-<today>`, and a push to develop hours later
+      # computes the very same tag from the very same recipe. Pushing it again with bytes
+      # that differ — one apt mirror having moved on is enough — untags the first
+      # manifest, GHCR collects it, and every digest pinned to it stops resolving.
+      #
+      # So the second run does not build. It reads the digest already published under that
+      # tag and reports it, which is the correct pin anyway: that image IS this recipe.
+      # The clock is exempt because it is what produces the day's bytes in the first place.
+      - name: Is it already published?
+        id: known
+        if: github.event_name != 'schedule'
+        env:
+          REF: ${{ steps.tag.outputs.ref }}
+        run: |
+          set -eu
+          if digest="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$REF" 2>/dev/null)"; then
+            echo "already=$digest" >> "$GITHUB_OUTPUT"
+            echo "$REF is already published at $digest — not rebuilding it"
+          else
+            echo "$REF is not in the registry yet"
+          fi
+
       - name: Build and push
         id: build
+        if: steps.known.outputs.already == ''
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -133,13 +178,26 @@ jobs:
           ignore-unfixed: true
           exit-code: '0'
 
+      # ONE PLACE COMPUTES THE PIN and the job hands out what it computed, rather than
+      # the same expression written twice and drifting once. Empty is a failure, not a
+      # blank line: it would mean neither the build nor the registry produced a digest.
       - name: Say what to pin
+        id: say
+        env:
+          REF: ${{ steps.tag.outputs.ref }}
+          # The build's digest, or the one already published under this tag.
+          DIGEST: ${{ steps.build.outputs.digest || steps.known.outputs.already }}
         run: |
           set -eu
+          if [ -z "$DIGEST" ]; then
+            echo "::error::no digest — the image was neither built nor found in the registry" >&2
+            exit 1
+          fi
           # TAG AND DIGEST, which is what `.github/toolchain-image` must carry: the digest
           # is pulled, the tag is the hash `ci-image-check` recomputes. Printing only the
           # digest would hand over a line that fails the check it is meant to satisfy.
-          digest='${{ steps.tag.outputs.ref }}@${{ steps.build.outputs.digest }}'
+          digest="$REF@$DIGEST"
+          echo "pin=$digest" >> "$GITHUB_OUTPUT"
           {
             echo '## The toolchain image this run published'
             echo
@@ -165,9 +223,18 @@ jobs:
     name: 🧱 Runtime image
     runs-on: ubuntu-26.04
     outputs:
-      pin: ${{ steps.tag.outputs.ref }}@${{ steps.build.outputs.digest }}
+      pin: ${{ steps.say.outputs.pin }}
     steps:
+      # THE RECIPE THE PIN WILL SIT NEXT TO, which on a scheduled run is not the one
+      # checked out by default. A `schedule` fires from the default branch, so `main` is
+      # what lands here — and between two releases `main`'s Containerfile is not develop's.
+      # The tag is the hash of that file, and the pin goes to develop, so building from
+      # main would open a pull request whose own `ci-image-check` fails: the pin names one
+      # hash, develop's files hash to another. A dispatch keeps the branch it was asked
+      # from; a push is already restricted to develop.
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'develop' || github.ref }}
 
       - name: Compute the tag from what the image is made of
         id: tag
@@ -194,8 +261,32 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4
 
+      # A TAG IS NEVER REPUBLISHED, and two runs can legitimately land on the same one:
+      # the Monday rebuild publishes `<hash>-<today>`, and a push to develop hours later
+      # computes the very same tag from the very same recipe. Pushing it again with bytes
+      # that differ — one apt mirror having moved on is enough — untags the first
+      # manifest, GHCR collects it, and every digest pinned to it stops resolving.
+      #
+      # So the second run does not build. It reads the digest already published under that
+      # tag and reports it, which is the correct pin anyway: that image IS this recipe.
+      # The clock is exempt because it is what produces the day's bytes in the first place.
+      - name: Is it already published?
+        id: known
+        if: github.event_name != 'schedule'
+        env:
+          REF: ${{ steps.tag.outputs.ref }}
+        run: |
+          set -eu
+          if digest="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$REF" 2>/dev/null)"; then
+            echo "already=$digest" >> "$GITHUB_OUTPUT"
+            echo "$REF is already published at $digest — not rebuilding it"
+          else
+            echo "$REF is not in the registry yet"
+          fi
+
       - name: Build and push
         id: build
+        if: steps.known.outputs.already == ''
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -220,9 +311,18 @@ jobs:
           exit-code: '0'
 
       - name: Say what to pin
+        id: say
+        env:
+          REF: ${{ steps.tag.outputs.ref }}
+          DIGEST: ${{ steps.build.outputs.digest || steps.known.outputs.already }}
         run: |
           set -eu
-          digest='${{ steps.tag.outputs.ref }}@${{ steps.build.outputs.digest }}'
+          if [ -z "$DIGEST" ]; then
+            echo "::error::no digest — the image was neither built nor found in the registry" >&2
+            exit 1
+          fi
+          digest="$REF@$DIGEST"
+          echo "pin=$digest" >> "$GITHUB_OUTPUT"
           {
             echo '## The runtime image this run published'
             echo
@@ -263,10 +363,7 @@ jobs:
   pin:
     name: 📌 Propose the new pins
     needs: [toolchain, runtime]
-    if: >-
-      github.event_name != 'push'
-      || github.ref == 'refs/heads/develop'
-      || github.ref == 'refs/heads/main'
+    if: github.event_name == 'schedule' || github.ref == 'refs/heads/develop'
     runs-on: ubuntu-26.04
     permissions:
       contents: write
