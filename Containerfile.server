@@ -88,23 +88,19 @@ RUN find apps packages -name '*.rs' -exec touch {} + \
  && cargo build --release -p rite-server
 
 # --- Stage 3: minimal runtime ---
-# Pinned by digest: there is no version in this tag to pin instead, and the runtime
-# is where a silently-changed base would ship. Dependabot's docker ecosystem moves it.
-# The digest is the INDEX's, not one architecture's manifest — the release builds this
-# image for amd64 and arm64 from the same line, and a per-arch digest would pin it to one
-# of them and fail the other. (`skopeo inspect --raw` returns the index; its sha256 is
-# this value.)
+# `Containerfile.runtime`, published by `.github/workflows/base-images.yml` and pinned
+# here by tag AND digest. The digest is what is pulled — a tag can be moved by anyone who
+# can push to the registry — and the tag is the hash of `Containerfile.runtime`, which
+# `ci-image-check` recomputes. Edit that file without republishing and CI says so, rather
+# than building this image on a base that no longer matches its recipe.
 #
-# TRIXIE, AND ALL THREE STAGES TOGETHER. Debian 13 is stable since 2025-08; bookworm is
-# oldstable and its security window is the shorter one. The three bases move as a set
-# because the binary built in the builder has to load in the runtime: rust:1.100.0-trixie
-# and debian:trixie-slim are both GLIBC 2.41, and a builder left on trixie over a bookworm
-# runtime (2.36) would fail at load, not at build.
-FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS runtime
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates \
- && rm -rf /var/lib/apt/lists/* \
- && useradd --system --create-home --home-dir /home/rite --shell /usr/sbin/nologin rite
+# THIS LINE IS THE PIN AND THERE IS NO SECOND COPY OF IT. A digest written in two places
+# is a digest that will disagree with itself.
+#
+# What left with it: `apt-get install ca-certificates` and the `useradd`, which used to run
+# here — twice per release under emulation, and once per pull request, since CI builds this
+# image too. They happen weekly now, when nobody is waiting.
+FROM ghcr.io/altagen/rite-runtime:df96a51a6275@sha256:e1432db7eaa6183cbdb89d538d56fa18dc11417af1eb9d25100b4f4b21fab446 AS runtime
 COPY --from=builder /src/target/release/rite-server /usr/local/bin/rite-server
 USER rite
 # The home, and not the default `/`. A local terminal opened from the web UI inherits this
