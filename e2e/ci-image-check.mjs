@@ -240,33 +240,59 @@ check('no CI job installs what the image already carries', () => {
   );
 });
 
-// THE SERVER IMAGE'S THREE STAGES SHARE ONE DEBIAN, and nothing held them together until
-// this check. `rust:<v>-<suite>` compiles the binary, `debian:<suite>-slim` runs it, and the
-// binary links against the builder's glibc: trixie is 2.41 and bookworm 2.36, so a builder
-// moved without the runtime fails at LOAD, not at build — the error arrives in production
-// wearing the mask of a broken server. The node stage is in the set because its bundle is
-// what rust-embed compiles in, and a suite that disagrees there is the same drift starting.
+// THE SERVER IMAGE'S THREE STAGES SHARE ONE DEBIAN — across two files now.
 //
-// It matters more here than anywhere else in this file: no CI job builds Containerfile.server
-// at all. The release workflow is the first thing that ever does, on four architectures, at
-// the one moment nobody wants to debug a loader error.
+// `rust:<v>-<suite>` compiles the binary and `Containerfile.runtime` runs it, and the
+// binary links against the builder's glibc: trixie is 2.41 and bookworm 2.36, so a
+// builder moved without the runtime fails at LOAD, not at build — the error arrives in
+// production wearing the mask of a broken server. The node stage is in the set because
+// its bundle is what rust-embed compiles in.
+//
+// The runtime stage used to name its Debian here; it names a published image now, so this
+// reads the suite out of the file that base is built from. A check that silently stops
+// having anything to compare is worse than no check.
 check('the server image builds and runs on one Debian', () => {
   const server = read('Containerfile.server');
   const stages = [
-    [/^FROM node:\$\{NODE_VERSION\}-([a-z]+)-slim /m, 'the bundle stage'],
-    [/^FROM rust:\$\{RUST_VERSION\}-([a-z]+) /m, 'the builder stage'],
-    [/^FROM debian:([a-z]+)-slim@sha256:[0-9a-f]{64} /m, 'the runtime stage'],
-  ].map(([re, what]) => {
-    const m = server.match(re);
-    assert.ok(m, `Containerfile.server: ${what} no longer names a Debian suite the usual way`);
+    [server, /^FROM node:\$\{NODE_VERSION\}-([a-z]+)-slim /m, 'the bundle stage'],
+    [server, /^FROM rust:\$\{RUST_VERSION\}-([a-z]+) /m, 'the builder stage'],
+    [read('Containerfile.runtime'), /^FROM debian:([a-z]+)-slim@sha256:[0-9a-f]{64}$/m, 'the runtime base'],
+  ].map(([text, re, what]) => {
+    const m = text.match(re);
+    assert.ok(m, `${what} no longer names a Debian suite the usual way`);
     return { what, suite: m[1] };
   });
-  const suites = [...new Set(stages.map((s) => s.suite))];
+  const suites = [...new Set(stages.map((x) => x.suite))];
   assert.equal(
     suites.length,
     1,
-    stages.map((s) => `${s.what} on ${s.suite}`).join(', ') +
+    stages.map((x) => `${x.what} on ${x.suite}`).join(', ') +
       ' — the binary has to find the glibc it was compiled against',
+  );
+});
+
+// AND THE RUNTIME BASE IT IS PINNED TO IS THE ONE THAT FILE DESCRIBES. Same closure as the
+// toolchain image: the `FROM` line in Containerfile.server is the only copy of the digest,
+// and its tag is the hash of `Containerfile.runtime`. Edit that file without republishing
+// and the server image would be built on a base that no longer matches its own recipe —
+// invisible, since it builds perfectly either way.
+check('the pinned runtime base is the one Containerfile.runtime describes', () => {
+  const m = read('Containerfile.server').match(
+    /^FROM (\S+rite-runtime):([0-9a-f]{12})@(sha256:[0-9a-f]{64}) AS runtime$/m,
+  );
+  assert.ok(
+    m,
+    'the runtime stage no longer reads `FROM <image>:<12-hex>@sha256:<digest> AS runtime`',
+  );
+  const want = createHash('sha256')
+    .update(readFileSync(resolve(ROOT, 'Containerfile.runtime')))
+    .digest('hex')
+    .slice(0, 12);
+  assert.equal(
+    m[2],
+    want,
+    `the runtime base is pinned at ${m[2]} but Containerfile.runtime hashes to ${want} — ` +
+      'republish it with the `Base images` workflow and pin the line it prints',
   );
 });
 
