@@ -15,6 +15,10 @@ env:
 permissions:
   contents: read
   security-events: write
+  # Pulling the toolchain image: the package is private and lives beside this repository,
+  # so GITHUB_TOKEN needs to be allowed to read it. Read only — the image is published by
+  # `toolchain-image.yml`, never from here.
+  packages: read
 
 jobs:
   # A Containerfile cannot read a file to pick its base image, so
@@ -66,52 +70,44 @@ jobs:
           echo "both pinned to $pinned"
 
   # Lint commit messages (PRs only)
-  # THE TOOLCHAIN IMAGE, BUILT WHEN IT CHANGES AND NOT WHEN THE CODE DOES.
+  # THE TOOLCHAIN IMAGE, RESOLVED HERE AND BUILT SOMEWHERE ELSE.
   #
-  # `Containerfile` is the environment ADR 0001 rests on: a local `task check` passes iff
-  # CI passes. That held only as far as "both sides install the same package names" —
-  # every job here ran `apt-get install` on a bare runner and hoped to land on the same
-  # versions the image has. It is also what the jobs spent their time on: on the run that
-  # added this, the SAME four packages took 23s in one job and 25m32s in another. That
-  # spread is not work, it is a mirror.
+  # Four jobs used to run `apt-get install` on a bare runner, then install Rust, then
+  # Node, then pnpm — all of which `Containerfile` already contains, and which ADR 0001
+  # says must be the SAME environment the local gate uses. "Both sides install the same
+  # package names and hope to land on the same versions" is not the same environment.
   #
-  # TAGGED BY THE HASH OF WHAT GOES INTO IT, so it is built when the toolchain changes and
-  # pulled every other time. The common path is: compute the tag, ask the registry, find
-  # it, stop — seconds. Bump Rust, Node, pnpm or the package list and the tag changes, the
-  # image is built once, and every run after that pulls it.
+  # WHAT IT COST, measured: on one run the identical package list took 23s in one job and
+  # 34m12s in another, because archive.ubuntu.com had stopped answering. Thirteen jobs,
+  # each holding its own ticket against a server that is not ours.
   #
-  # `package.json` is in the hash BY ONE LINE and not whole: the image reads
-  # `packageManager` from it, while the file also carries the release number. Hashing all
-  # of it would rebuild the image on every version bump — the exact "an image per build"
-  # this design exists to avoid.
+  # So nothing is built here. `.github/workflows/toolchain-image.yml` publishes the image
+  # weekly and on a change to what it is made of; this job reads the pinned line, checks
+  # that it is really there, and hands it to the jobs below. Seconds.
   #
-  # AND IT IS BUILT HERE, in the run that uses it, rather than by a workflow that
-  # republishes it after the fact. A pull request that edits `Containerfile` is then
-  # validated by ITS image and not by the one before it, which is the failure mode this
-  # repository has already paid for once (#436, reported green by jobs that never ran the
-  # check that would have failed).
+  # The pin carries a tag AND a digest. The digest is what is pulled; the tag is the hash
+  # of the image's inputs, and `ci-image-check` recomputes it — so editing `Containerfile`
+  # without republishing fails with the reason, rather than validating the change in the
+  # environment it was meant to replace.
   image:
     name: 📦 Toolchain image
     runs-on: ubuntu-26.04
-    permissions:
-      contents: read
-      packages: write
     outputs:
-      ref: ${{ steps.tag.outputs.ref }}
-      built: ${{ steps.have.outputs.hit == 'false' }}
+      ref: ${{ steps.pin.outputs.ref }}
     steps:
       - uses: actions/checkout@v7
 
-      - name: Compute the tag from what the image is made of
-        id: tag
+      - name: Read the pinned image
+        id: pin
         run: |
           set -eu
-          hash="$( { cat Containerfile rust-toolchain.toml .node-version; \
-                     sed -n 's/.*"packageManager" *: *"\([^"]*\)".*/\1/p' package.json; } \
-                   | sha256sum | cut -c1-12 )"
-          image="ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/rite-ci"
-          echo "ref=$image:$hash" >> "$GITHUB_OUTPUT"
-          echo "the toolchain this commit asks for: $image:$hash"
+          ref="$(grep -v '^#' .github/toolchain-image | grep -v '^[[:space:]]*$' | head -1)"
+          if [ -z "$ref" ]; then
+            echo "::error file=.github/toolchain-image::no image pinned" >&2
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "$ref"
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
@@ -120,32 +116,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Is it already published?
-        id: have
+      # Failing here, with one line, beats four jobs failing on an image pull they
+      # cannot explain.
+      - name: It is published
         run: |
-          if docker manifest inspect "${{ steps.tag.outputs.ref }}" >/dev/null 2>&1; then
-            echo "hit=true" >> "$GITHUB_OUTPUT"
-            echo "already there — nothing to build"
-          else
-            echo "hit=false" >> "$GITHUB_OUTPUT"
-            echo "not published yet — building it once"
+          set -eu
+          if ! docker manifest inspect "${{ steps.pin.outputs.ref }}" >/dev/null 2>&1; then
+            echo "::error file=.github/toolchain-image::the pinned image is not in the registry — run the Toolchain image workflow and pin what it prints" >&2
+            exit 1
           fi
-
-      - name: Set up Buildx
-        if: steps.have.outputs.hit == 'false'
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build and push it
-        if: steps.have.outputs.hit == 'false'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: Containerfile
-          platforms: linux/amd64
-          push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          tags: ${{ steps.tag.outputs.ref }}
+          echo "present"
 
   commitlint:
     name: 📝 Commit Lint
