@@ -53,6 +53,17 @@ jobs:
       # file also carries the release number, so hashing all of it would publish a new
       # image on every version bump — an image per release, which is the thing this
       # design exists to avoid. Invisible until a release, which is why it is written down.
+      # A TAG IS NEVER REUSED, and this is the correction that matters most here.
+      #
+      # Pushing the same tag twice makes the previous manifest untagged, and GHCR collects
+      # it — so the digest pinned in `.github/toolchain-image` stopped resolving and every
+      # job that runs in this image failed at once. That was not an accident waiting to
+      # happen, it was scheduled: the Monday rebuild would have done it every week, by
+      # design, through the mechanism meant to make this reliable.
+      #
+      # So every publish carries its own date: `<hash>-<YYYYMMDD>` is immutable, and the
+      # pin keeps resolving until someone deliberately moves it. `<hash>` is pushed too, as
+      # a convenience pointer for a human reading the registry — nothing pins it.
       - name: Compute the tag from what the image is made of
         id: tag
         run: |
@@ -62,7 +73,9 @@ jobs:
                    | sha256sum | cut -c1-12 )"
           image="ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/rite-ci"
           echo "image=$image" >> "$GITHUB_OUTPUT"
-          echo "ref=$image:$hash" >> "$GITHUB_OUTPUT"
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+          echo "ref=$image:$hash-$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+          echo "moving=$image:$hash" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
@@ -88,7 +101,9 @@ jobs:
           no-cache: ${{ github.event_name == 'schedule' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          tags: ${{ steps.tag.outputs.ref }}
+          tags: |
+            ${{ steps.tag.outputs.ref }}
+            ${{ steps.tag.outputs.moving }}
 
       # REPORTS, DOES NOT GATE, and that is a decision rather than an omission. A build
       # image legitimately carries development libraries with open advisories; a weekly
@@ -146,10 +161,13 @@ jobs:
         id: tag
         run: |
           set -eu
+          # Dated, immutable, never reused — see the toolchain job above for what
+          # reusing a tag cost.
           hash="$(sha256sum Containerfile.runtime | cut -c1-12)"
           image="ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/rite-runtime"
           echo "image=$image" >> "$GITHUB_OUTPUT"
-          echo "ref=$image:$hash" >> "$GITHUB_OUTPUT"
+          echo "ref=$image:$hash-$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+          echo "moving=$image:$hash" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
@@ -175,7 +193,9 @@ jobs:
           no-cache: ${{ github.event_name == 'schedule' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          tags: ${{ steps.tag.outputs.ref }}
+          tags: |
+            ${{ steps.tag.outputs.ref }}
+            ${{ steps.tag.outputs.moving }}
 
       - name: Scan it
         uses: aquasecurity/trivy-action@v0.36.0
