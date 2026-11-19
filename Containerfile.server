@@ -100,7 +100,7 @@ RUN find apps packages -name '*.rs' -exec touch {} + \
 # What left with it: `apt-get install ca-certificates` and the `useradd`, which used to run
 # here — twice per release under emulation, and once per pull request, since CI builds this
 # image too. They happen weekly now, when nobody is waiting.
-FROM ghcr.io/altagen/rite-runtime:df96a51a6275@sha256:e1432db7eaa6183cbdb89d538d56fa18dc11417af1eb9d25100b4f4b21fab446 AS runtime
+FROM ghcr.io/altagen/rite-runtime:df96a51a6275-20261119@sha256:79d0d48dbc9116f759a7da54891f3939bd3328f1d90e7ebb2217e4b097202f33 AS runtime
 COPY --from=builder /src/target/release/rite-server /usr/local/bin/rite-server
 USER rite
 # The home, and not the default `/`. A local terminal opened from the web UI inherits this

@@ -1,15 +1,17 @@
 # The image every CI job that compiles anything runs in. One line, read by
 # `.github/workflows/ci.yml` and by `e2e/ci-image-check.mjs`.
 #
-# BOTH HALVES MATTER. The digest is what is pulled — a tag can be moved by anyone who can
+# THREE PARTS, ALL LOAD-BEARING. The digest is what is pulled — a tag can be moved by anyone who can
 # push to the registry, a digest cannot, and it is what answers "which environment built
 # this binary". The tag is the hash of what the image is made of: `Containerfile`,
 # `rust-toolchain.toml`, `.node-version`, and the `packageManager` line of package.json.
 #
-# `ci-image-check` recomputes that hash and fails if it is not the tag below. So editing
+# The date makes the tag immutable: a reused tag untags the previous manifest, GHCR
+# collects it, and every pin stops resolving at once — which is what happened on
+# 2026-11-19. `ci-image-check` recomputes that hash and fails if it is not the tag below. So editing
 # any of those four files without republishing the image fails CI with the reason, instead
 # of silently validating the change in the environment it was meant to replace.
 #
 # To move it: run the `Toolchain image` workflow (it runs itself weekly, and on a push
 # that touches those files), then paste the line it prints here.
-ghcr.io/altagen/rite-ci:479f23fa17da@sha256:8928ac82b81f5df2b2726250d4c4abcd767597a3c5461746a2fa6fb826e0c13b
+ghcr.io/altagen/rite-ci:479f23fa17da-20261119@sha256:5d4b23dd90c8fb0d3d4010503de96196bf2582159bbc06e03c05c68b930ea42d
