@@ -33,8 +33,38 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # --- System dependencies -----------------------------------------------------
 # The wry desktop client on Linux needs the GTK3 / WebKit2GTK 4.1 dev headers.
-# build-essential + pkg-config + libssl-dev cover the Rust native builds.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# build-essential + pkg-config + libssl-dev cover the Rust native builds. The last three
+# are chromium's: the e2e harness (local only — not part of GitHub CI) runs it headless,
+# and GTK/WebKit above pull everything it needs EXCEPT the NSS/NSPR crypto libs and ALSA.
+#
+# ONE apt INVOCATION AND NOT TWO. Those three had a layer of their own, which meant a
+# second `apt-get update` — a second chance for an unreachable archive to fail the build,
+# for three packages. One list, one retry loop, one layer.
+#
+# RETRIED, AND VERIFIED BEFORE INSTALLING. `apt-get update` exits 0 when only SOME
+# sources fail, so `update && install` walks straight into empty package lists and
+# reports `E: Unable to locate package git` — which reads as a wrong package name and
+# sends the next person looking in the list below, not at the network. That is not
+# hypothetical: archive.ubuntu.com was unreachable from GitHub's runners on 2026-11-19
+# (`connection timed out`, 270s), it failed this build, and the same outage is what made
+# `apt-get install` take 34 minutes in the jobs this image replaces.
+#
+# So: apt retries each fetch, the loop retries the whole update, and a sentinel lookup
+# decides whether the lists are usable. Failing here says what happened.
+RUN set -eu; \
+    printf 'Acquire::Retries "5";\n' > /etc/apt/apt.conf.d/80-retries; \
+    i=1; \
+    until apt-get update && apt-cache show git >/dev/null 2>&1; do \
+        if [ "$i" -ge 5 ]; then \
+            echo "apt-get update never produced usable package lists after $i tries —" >&2; \
+            echo "the archive is unreachable, not the package names below." >&2; \
+            exit 1; \
+        fi; \
+        echo "package lists incomplete, retrying ($i)"; \
+        i=$((i + 1)); \
+        sleep 10; \
+    done; \
+    apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \
         curl \
@@ -46,7 +76,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libayatana-appindicator3-dev \
         librsvg2-dev \
         patchelf \
-    && rm -rf /var/lib/apt/lists/*
+        libnss3 \
+        libnspr4 \
+        libasound2t64; \
+    rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/locale
 
 # --- Rust ---------------------------------------------------------------------
 # The version comes from rust-toolchain.toml, the same file CI and a local checkout
@@ -58,8 +91,18 @@ RUN RUST_VERSION="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' /tmp/rust-toolchain.to
               --component rustfmt --component clippy \
     && rustc --version && cargo --version
 
-# cargo-audit for the "Cargo Audit" CI check
-RUN cargo install cargo-audit --locked
+# cargo-audit for the "Cargo Audit" CI check.
+#
+# AND THE SOURCES IT WAS BUILT FROM, DROPPED IN THE SAME LAYER. `cargo install` leaves
+# everything it downloaded in $CARGO_HOME/registry — 296 MB of crate sources for a 20 MB
+# binary, measured. Deleting them in a later layer would not help: a layer only adds, so
+# the weight ships either way. It has to be the same RUN.
+#
+# `rustup`'s own documentation goes with it: 16 MB of HTML nobody reads in CI, and the
+# minimal profile does not exclude it.
+RUN cargo install cargo-audit --locked \
+    && rm -rf "$CARGO_HOME/registry" "$CARGO_HOME/git" \
+    && rm -rf "$RUSTUP_HOME"/toolchains/*/share/doc
 
 # --- Node.js + pnpm -----------------------------------------------------------
 # Both versions come from the repo rather than from this file: .node-version is what
@@ -92,16 +135,6 @@ RUN NODE_VERSION="$(tr -d '[:space:]' < /tmp/.node-version)" \
 # --- go-task -----------------------------------------------------------------
 RUN sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin \
     && task --version
-
-# --- Playwright browser runtime deps -----------------------------------------
-# The e2e harness (local only — not part of GitHub CI) runs chromium headless.
-# GTK/WebKit above pull most of chromium's deps; these are the ones it doesn't
-# (NSS/NSPR crypto libs + ALSA). Keeps the e2e run reproducible in the image.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        libnss3 \
-        libnspr4 \
-        libasound2t64 \
-    && rm -rf /var/lib/apt/lists/*
 
 # Mirror GitHub Actions' environment: `CI=true` is set on every runner. pnpm 11 checks it before
 # running scripts (verifyDepsBeforeRun) and, without it, aborts a non-interactive node_modules
