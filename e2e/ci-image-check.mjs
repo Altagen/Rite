@@ -70,16 +70,19 @@ function runners() {
   return found;
 }
 
-/** Every `os: ubuntu-…` inside a build matrix — the client, and the server binary. */
-function matrixRunners() {
+/** Every `os:` inside a build matrix, whatever the platform — macOS included. */
+function matrixOses() {
   const found = [];
   for (const file of workflows) {
-    for (const [, value] of read(`${WORKFLOWS}/${file}`).matchAll(/^\s*os:\s*(ubuntu-\S+)\s*$/gm)) {
+    for (const [, value] of read(`${WORKFLOWS}/${file}`).matchAll(/^\s*os:\s*(\S+)\s*$/gm)) {
       found.push({ file, value });
     }
   }
   return found;
 }
+
+/** Every `os: ubuntu-…` inside a build matrix — the client, and the server binary. */
+const matrixRunners = () => matrixOses().filter((r) => r.value.startsWith('ubuntu'));
 
 /** "ubuntu-22.04-arm" → 2204, so two labels compare as numbers whatever the suffix. */
 const rank = (label) => {
@@ -101,12 +104,19 @@ const tally = (rows) =>
     .map(([file, n]) => (n > 1 ? `${file} ×${n}` : file))
     .join(', ');
 
-check('no workflow rides `ubuntu-latest`', () => {
-  const riding = runners().filter((r) => r.value === 'ubuntu-latest');
+/* `ubuntu-latest` was the one this started with, and widening it is what caught the one
+   that was left: both macOS entries of the release matrix rode `macos-latest` for every
+   release up to 0.2.9. A moving label is the same hazard on any platform — the runner the
+   binary is built on decides what it will refuse to start on, and the label changes it
+   with no commit to review. `runs-on:` alone was not enough either: a matrix hides its
+   runner in `os:`, which is exactly where the macOS one sat. */
+check('no runner label is a moving `-latest`', () => {
+  const riding = [...runners(), ...matrixOses()].filter((r) => r.value.endsWith('-latest'));
   assert.equal(
     riding.length,
     0,
-    `${tally(riding)} — the label moves under you, pin the version`,
+    `${tally(riding)} ride ${[...new Set(riding.map((r) => r.value))].join(', ')} — ` +
+      'the label moves under you, pin the version',
   );
 });
 
@@ -132,6 +142,30 @@ check('a shipped binary is built on an ubuntu no newer than the image', () => {
     0,
     `${[...new Set(newer.map((r) => r.value))].join(', ')} is newer than ubuntu-${image} — ` +
       'a newer build host raises the glibc floor of the shipped binary',
+  );
+});
+
+/* ONE MACHINE NOW BUILDS TWO OF THEM, so the count of jobs no longer tells you the count
+   of assets. Dropping `aarch64-apple-darwin` from the macOS entry's `targets:` is a
+   one-word edit that still produces a green release — with three client tarballs instead
+   of four, discovered by whoever downloads the missing one. The names below are the
+   contract every release since 0.1.0 has published. */
+const CLIENT_TARGETS = [
+  'x86_64-unknown-linux-gnu',
+  'aarch64-unknown-linux-gnu',
+  'x86_64-apple-darwin',
+  'aarch64-apple-darwin',
+];
+
+check('the release builds every client target it ships', () => {
+  const built = [...read(`${WORKFLOWS}/release.yml`).matchAll(/^\s*targets:\s*(\S+)\s*$/gm)]
+    .flatMap(([, value]) => value.split(','));
+  const missing = CLIENT_TARGETS.filter((t) => !built.includes(t));
+  assert.equal(
+    missing.length,
+    0,
+    `${missing.join(', ')} is built by no matrix entry — the release would ship ` +
+      `${missing.length} asset(s) fewer than the one before it, and say nothing`,
   );
 });
 
@@ -406,6 +440,51 @@ check('the standalone checks run in CI, not only in the local gate', () => {
       `${file} lets the job that runs the checks fail without failing the run`,
     );
   }
+});
+
+/* A RELEASE THAT NEVER GOT A MACHINE HAS TO BE PICKED UP AGAIN. GitHub can end a job
+   without ever starting it — `cancelled`, no runner, no steps — and that is what happened
+   to the macOS client on 2026-11-19. `finalize` and `publish` sit behind it, so nothing
+   wrong was published; the release simply stopped, as a draft, until a person noticed.
+
+   Three things have to hold at once, and each fails differently:
+     - something must listen, or we are back to noticing by hand;
+     - it must read the jobs, because rerunning on any failure means a release that does
+       not compile burns three attempts and still tells nobody;
+     - it must have a ceiling, because a rerun that strands again raises the same event.
+   None of the three is visible from the one that is missing, so all three are asserted. */
+check('a release no runner took is rerun, once, and only for that', () => {
+  const listeners = workflows.filter((f) => {
+    const text = read(`${WORKFLOWS}/${f}`);
+    return /^on:\n(?:\s.*\n)*?\s+workflow_run:/m.test(text) && /workflows:.*\bRelease\b/.test(text);
+  });
+  assert.equal(
+    listeners.length,
+    1,
+    listeners.length === 0
+      ? 'no workflow listens for a failed Release — a stranded release waits for a human'
+      : `${listeners.join(', ')} all listen for Release, and would rerun it together`,
+  );
+
+  // WITHOUT ITS COMMENTS. The first draft of this check passed against a file whose
+  // guard had been deleted, because the paragraph explaining the guard still quoted it.
+  // A check that a comment can satisfy is a check of the documentation.
+  const text = read(`${WORKFLOWS}/${listeners[0]}`)
+    .split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n');
+  assert.match(
+    text,
+    /runner_name\s*==\s*""/,
+    `${listeners[0]} does not tell a job no runner took from a job that failed to build — ` +
+      'a broken release would be rerun until the attempts run out',
+  );
+  assert.match(
+    text,
+    /run_attempt\s*<\s*[1-3]\b/,
+    `${listeners[0]} has no attempt ceiling — GitHub chains three levels of workflow_run, ` +
+      'and a rerun that strands again raises this very event',
+  );
 });
 
 console.log(`\n${passed} checks passed (ubuntu ${image}, shipped binaries on ${

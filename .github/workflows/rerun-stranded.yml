@@ -1,0 +1,81 @@
+# RERUN A RELEASE THAT NEVER GOT A MACHINE.
+#
+# A GitHub-hosted job can end without ever having run: the scheduler looks for a runner,
+# does not find one, and gives up. The job then reports `cancelled` with no steps, no
+# runner name, and an annotation of GitHub's own making — "The job was not acquired by
+# Runner of type hosted even after multiple attempts". That happened on 2026-11-19 to the
+# macOS half of a release rehearsal, fifteen minutes after it was queued.
+#
+# Nothing shipped broken: `finalize` needs `build-client`, `publish` needs `finalize`, so
+# the release stayed a draft. But it stayed a draft until a human noticed and typed
+# `gh run rerun --failed`. This workflow is that human.
+#
+# ONLY FOR THAT FAILURE, AND NOT FOR A BROKEN BUILD. A release that fails because the code
+# does not compile must stay failed and visible; rerunning it would burn an hour and teach
+# nobody anything. So the job below does not trust the run's conclusion — it asks the API
+# which jobs ended with no runner and no steps, and reruns only if that list is non-empty.
+#
+# IT CANNOT WORK FROM A BRANCH. "This event will only trigger a workflow run if the
+# workflow file exists on the default branch" — so this file does nothing at all until it
+# reaches `main`, and there is no way to rehearse it before then. Same constraint as the
+# weekly base-image rebuild in base-images.yml.
+#
+# THE CEILING IS NOT DECORATION. GitHub allows three levels of chained `workflow_run`, and
+# a rerun that fails the same way raises this event again. `run_attempt < 3` is what stops
+# a stranded release from rerunning itself until the quota is gone.
+name: Rerun stranded jobs
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  rerun:
+    name: ♻️ Rerun what no runner took
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.run_attempt < 3
+    runs-on: ubuntu-26.04
+    permissions:
+      actions: write
+    steps:
+      - name: Was a job left without a runner?
+        id: stranded
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          set -eu
+          # A job the scheduler never placed: cancelled, no runner, not one step started.
+          # A job that was cancelled after starting has steps, and is not this.
+          names="$(gh api --paginate \
+            "/repos/$REPO/actions/runs/$RUN_ID/attempts/$ATTEMPT/jobs" \
+            --jq '.jobs[]
+                  | select(.conclusion == "cancelled"
+                           and .runner_name == ""
+                           and (.steps | length) == 0)
+                  | .name')"
+          if [ -z "$names" ]; then
+            echo "run $RUN_ID attempt $ATTEMPT failed on its own merits — leaving it alone"
+            exit 0
+          fi
+          echo "no runner was ever assigned to:"
+          echo "$names" | sed 's/^/  /'
+          echo "found=yes" >> "$GITHUB_OUTPUT"
+
+      - name: Rerun the failed jobs
+        if: steps.stranded.outputs.found == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -eu
+          gh run rerun "$RUN_ID" --repo "$REPO" --failed
+          echo "attempt $((${{ github.event.workflow_run.run_attempt }} + 1)) requested"

@@ -96,21 +96,35 @@ jobs:
       matrix:
         platform:
           - name: Linux x86_64
+            slug: linux-x86_64
             os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            arch: x86_64
+            targets: x86_64-unknown-linux-gnu
           - name: Linux ARM64
+            slug: linux-aarch64
             os: ubuntu-22.04-arm
-            target: aarch64-unknown-linux-gnu
-            arch: aarch64
-          - name: macOS x86_64
-            os: macos-latest
-            target: x86_64-apple-darwin
-            arch: x86_64
-          - name: macOS ARM64
-            os: macos-latest
-            target: aarch64-apple-darwin
-            arch: aarch64
+            targets: aarch64-unknown-linux-gnu
+          # ONE JOB FOR BOTH MACS, AND ON INTEL. The two macOS entries used to ask for
+          # `macos-latest` each: two runners from the one pool GitHub annotates as short.
+          # On 2026-11-19 the x86_64 half waited 15 minutes, was never given a machine, and
+          # GitHub's own annotation on the job said so -- "The job was not acquired by
+          # Runner of type hosted even after multiple attempts", beside "Due to capacity
+          # constraints, jobs targeting macOS arm64 runners may experience longer queue
+          # times." The release could not finalize; it stayed a draft, correctly, and
+          # someone had to rerun it by hand.
+          #
+          # Both halves were ALREADY cross-compiling on the same arm64 machine, because one
+          # macOS SDK carries both architectures -- so the second runner bought nothing but
+          # a second chance to be refused. Merged, we ask for one machine instead of two.
+          #
+          # And we ask the OTHER pool: `macos-26-intel` is 4 CPUs and 14 GB against the
+          # arm64 runner's 3 and 7, and it is not the pool GitHub says is constrained.
+          # Compiling aarch64-apple-darwin from an x86_64 host is the same SDK trick in the
+          # other direction. If Apple's retreat from Intel ever takes these runners away,
+          # the move back is one label: this job does not care which way it cross-compiles.
+          - name: macOS
+            slug: macos
+            os: macos-26-intel
+            targets: x86_64-apple-darwin,aarch64-apple-darwin
 
     runs-on: ${{ matrix.platform.os }}
     steps:
@@ -137,12 +151,12 @@ jobs:
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master as of 2026-10-20
         with:
           toolchain: ${{ steps.rust-pin.outputs.channel }}
-          targets: ${{ matrix.platform.target }}
+          targets: ${{ matrix.platform.targets }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.platform.target }}
+          key: ${{ matrix.platform.slug }}
 
       # wry needs WebKitGTK + GTK at build and run time on Linux.
       - name: Install system dependencies (Linux)
@@ -167,20 +181,41 @@ jobs:
       # `build.rs` falls back to asking git, which works here — but passing it is what
       # makes the answer the TAG's commit rather than whatever the checkout resolved, and
       # it is the same value the image is given, so the two artefacts of one release agree.
-      - name: Build client binary
+      #
+      # One target on Linux, two on macOS -- the loop is the same either way, and the
+      # setup above it (checkout, pnpm, the frontend, the Rust cache) is paid once.
+      - name: Build client binaries
+        shell: bash
         env:
           RITE_COMMIT: ${{ github.sha }}
-        run: cargo build --release -p rite-desktop --target ${{ matrix.platform.target }}
+        run: |
+          set -eu
+          for target in $(echo '${{ matrix.platform.targets }}' | tr ',' ' '); do
+            echo "::group::cargo build --target $target"
+            cargo build --release -p rite-desktop --target "$target"
+            echo "::endgroup::"
+          done
 
-      - name: Package artifact
+      # The asset name comes from the TARGET TRIPLE and not from the runner, which is the
+      # only thing that still knew the architecture once one machine builds two of them.
+      # `x86_64-apple-darwin` -> `rite-<version>-macos-x86_64.tar.gz`, the name every
+      # release since 0.1.0 has carried.
+      - name: Package artifacts
         shell: bash
         run: |
+          set -eu
           VERSION="${{ needs.create-release.outputs.version }}"
-          PLATFORM=$([[ "${{ matrix.platform.os }}" == ubuntu* ]] && echo linux || echo macos)
-          ARCH="${{ matrix.platform.arch }}"
           mkdir -p dist
-          BINARY="target/${{ matrix.platform.target }}/release/rite"
-          tar -czf "dist/rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz" -C "$(dirname "$BINARY")" rite
+          for target in $(echo '${{ matrix.platform.targets }}' | tr ',' ' '); do
+            ARCH="${target%%-*}"
+            case "$target" in
+              *-apple-darwin) PLATFORM=macos ;;
+              *-linux-gnu) PLATFORM=linux ;;
+              *) echo "no asset name is defined for $target" >&2; exit 1 ;;
+            esac
+            tar -czf "dist/rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz" \
+              -C "target/${target}/release" rite
+          done
           echo "Artifacts:"; ls -lh dist/
 
       - name: Generate checksums
@@ -188,14 +223,14 @@ jobs:
         run: |
           cd dist
           for file in *; do
-            [ -f "$file" ] && sha256sum "$file" >> "../checksums-${{ matrix.platform.target }}.txt"
+            [ -f "$file" ] && sha256sum "$file" >> "../checksums-${{ matrix.platform.slug }}.txt"
           done
 
       - name: Upload checksums as artifact
         uses: actions/upload-artifact@v7
         with:
-          name: checksums-${{ matrix.platform.target }}
-          path: checksums-${{ matrix.platform.target }}.txt
+          name: checksums-${{ matrix.platform.slug }}
+          path: checksums-${{ matrix.platform.slug }}.txt
 
       # draft: true or this step republishes the release as public the moment the
       # first platform finishes. That is how 0.2.0 went out while its Finalize job
