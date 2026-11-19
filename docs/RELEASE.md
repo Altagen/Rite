@@ -83,8 +83,12 @@ The workflow:
    download) — that header is written by the workflow, not by git-cliff, because
    the image is not a release asset and would otherwise go unmentioned
 2. **Creates a draft release** with those notes
-3. **Builds the client** in parallel for four targets, uploading each tarball to
-   the draft
+3. **Builds the client** for four targets on three runners, uploading each
+   tarball to the draft. One Linux runner per architecture, because the client
+   links against GTK and WebKit and the build host's glibc is the floor of what
+   ships; one macOS runner for both, because a single Apple SDK carries both
+   architectures and asking for a second Mac only doubles the chance of being
+   refused one
 4. **Builds and pushes** the multi-arch server image to GHCR
 5. **Generates the SBOM** (CycloneDX) and consolidates the per-platform checksums
 6. **Publishes** the release — the last step, so a failure anywhere above leaves
@@ -259,12 +263,12 @@ Two things that matter at release time and are not prerequisites:
 - **The pin is not the MSRV.** `rust-version` in the workspace manifest is the
   oldest Rust a consumer needs; `rust-toolchain.toml` is what we build with, and
   it is higher. Lowering one does not lower the other.
-- **One pin cannot read its file.** A Containerfile chooses its base image before
-  any file is available, so `Containerfile.server` carries `ARG RUST_VERSION`; the
-  release workflow passes the real value from `rust-toolchain.toml`, and the
-  default is what a local build gets. **Bumping the Rust pin means editing both
-  files** — the `📌 Pins` CI job fails if they disagree, so it is enforced rather
-  than remembered.
+- **The server image has no Rust pin to keep in step.** It used to compile the
+  workspace, so it carried `ARG RUST_VERSION` and `ARG NODE_VERSION` that a CI
+  job held against `rust-toolchain.toml` and `.node-version`. It now copies a
+  binary built in an earlier job and declares no toolchain at all, so the
+  duplicate pins and the job that policed them are both gone. What it does pin
+  is its runtime base, by digest, and `e2e/ci-image-check.mjs` checks that one.
 
 The ISO-CI container (`Containerfile`) carries all four pins, so a local
 `task check` inside it passes if and only if CI passes.
