@@ -1,4 +1,7 @@
-# The image every other job runs in, built on a clock rather than on a commit.
+# The two base images, built on a clock rather than on a commit.
+#
+#   toolchain — what every CI job that compiles anything runs IN
+#   runtime    — what the shipped server runs ON (the third stage of Containerfile.server)
 #
 # WHY IT IS NOT BUILT BY CI. Four jobs used to run `apt-get install` on a bare runner.
 # On 2026-11-19 archive.ubuntu.com stopped answering — `connection timed out` — and the
@@ -15,17 +18,18 @@
 # tag can be moved under us by anyone who can push to the registry, a digest cannot, and
 # it is also what makes "which environment built this binary" a question with an answer.
 # Updating is one line in that file — and the run below prints exactly what to put there.
-name: Toolchain image
+name: Base images
 
 on:
   # The four files the image is made of. Change one and the image is stale by definition.
   push:
     paths:
       - 'Containerfile'
+      - 'Containerfile.runtime'
       - 'rust-toolchain.toml'
       - '.node-version'
       - 'package.json'
-      - '.github/workflows/toolchain-image.yml'
+      - '.github/workflows/base-images.yml'
   # Monday, early. One line to change if weekly turns out to be the wrong cadence.
   schedule:
     - cron: '17 4 * * 1'
@@ -36,8 +40,8 @@ permissions:
   packages: write
 
 jobs:
-  build:
-    name: 📦 Build and publish
+  toolchain:
+    name: 📦 Toolchain image
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
@@ -120,5 +124,80 @@ jobs:
             echo
             echo 'Put that line in `.github/toolchain-image` to make CI use it.'
             echo 'Until then every job keeps running in the digest pinned there now.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$digest"
+
+  # THE BASE THE SHIPPED SERVER RUNS ON, and the last `apt-get` in either path.
+  #
+  # It used to be the third stage of `Containerfile.server`, which meant that apt ran
+  # twice per release — amd64, then arm64 under emulation — and once per pull request,
+  # since CI builds the server image too. Here it runs weekly, when nobody is waiting.
+  #
+  # MULTI-ARCH, because the release publishes the server image for both architectures from
+  # one `FROM` line. A single-architecture base would pin the server image to one of them
+  # and fail the other at build time.
+  runtime:
+    name: 🧱 Runtime image
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compute the tag from what the image is made of
+        id: tag
+        run: |
+          set -eu
+          hash="$(sha256sum Containerfile.runtime | cut -c1-12)"
+          image="ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/rite-runtime"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "ref=$image:$hash" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Containerfile.runtime
+          platforms: linux/amd64,linux/arm64
+          push: true
+          no-cache: ${{ github.event_name == 'schedule' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: ${{ steps.tag.outputs.ref }}
+
+      - name: Scan it
+        uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: ${{ steps.tag.outputs.ref }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '0'
+
+      - name: Say what to pin
+        run: |
+          set -eu
+          digest='${{ steps.tag.outputs.ref }}@${{ steps.build.outputs.digest }}'
+          {
+            echo '## The runtime image this run published'
+            echo
+            echo '```'
+            echo "$digest"
+            echo '```'
+            echo
+            echo 'Put that line in `.github/runtime-image`; the server image builds FROM it.'
           } >> "$GITHUB_STEP_SUMMARY"
           echo "$digest"

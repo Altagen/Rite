@@ -1,0 +1,46 @@
+# The base the shipped server runs on — built on a clock, not at release time.
+#
+#   podman build -f Containerfile.runtime .
+#
+# This is the third stage of `Containerfile.server`, lifted out of it. What it carries is
+# one apt invocation and one user, and neither belongs in a release.
+#
+# WHY IT LEFT. That apt ran inside every build of the server image: twice per release
+# (amd64, then arm64 under emulation) and once per pull request, since CI builds the
+# server image too. It is the last `apt-get` in either path. On 2026-11-19
+# archive.ubuntu.com stopped answering and the same four packages took 23s in one CI job
+# and 34m12s in another — the release stage is the worst place to hold that ticket,
+# because by the time it runs the tag is already pushed and a failure leaves a
+# half-published release rather than a red pull request.
+#
+# AND BECAUSE THIS IS THE IMAGE THAT SHIPS. Refreshing the build toolchain weekly is
+# convenience; refreshing what an operator runs is the one that carries ca-certificates
+# and the base security updates. A scheduled rebuild moves both without anyone deciding to.
+#
+# The Debian digest is pinned and Dependabot moves it (it has twice: #368, #411). The
+# suite has to match the builder stage of `Containerfile.server` — the binary links
+# against the builder's glibc and has to find it here — and `ci-image-check` holds the
+# two together across the two files.
+FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
+
+# `apt-get update` exits 0 when only SOME sources fail, so `update && install` walks into
+# empty lists and reports `E: Unable to locate package ca-certificates` — which reads as a
+# wrong package name rather than an unreachable archive. Same retry and same sentinel as
+# `Containerfile`, for the same reason, written out rather than shared: a base image with
+# one dependency should not need a file copied into it to install it.
+RUN set -eu; \
+    printf 'Acquire::Retries "5";\n' > /etc/apt/apt.conf.d/80-retries; \
+    i=1; \
+    until apt-get update && apt-cache show ca-certificates >/dev/null 2>&1; do \
+        if [ "$i" -ge 5 ]; then \
+            echo "apt-get update never produced usable package lists after $i tries —" >&2; \
+            echo "the archive is unreachable, not the package name above." >&2; \
+            exit 1; \
+        fi; \
+        echo "package lists incomplete, retrying ($i)"; \
+        i=$((i + 1)); \
+        sleep 10; \
+    done; \
+    apt-get install -y --no-install-recommends ca-certificates; \
+    rm -rf /var/lib/apt/lists/*; \
+    useradd --system --create-home --home-dir /home/rite --shell /usr/sbin/nologin rite
