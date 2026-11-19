@@ -1,0 +1,121 @@
+# The image every other job runs in, built on a clock rather than on a commit.
+#
+# WHY IT IS NOT BUILT BY CI. Four jobs used to run `apt-get install` on a bare runner.
+# On 2026-11-19 archive.ubuntu.com stopped answering — `connection timed out` — and the
+# same package list took 23s in one job and 34m12s in another on the same run. Thirteen
+# jobs, each holding its own lottery ticket against a server that is not ours. Here, apt
+# runs once a week in one job, and a bad day fails nothing but this.
+#
+# WHY IT IS ON A CLOCK AND NOT ONLY ON DEMAND. An image built once and pinned forever is
+# a base that stops receiving security updates — "no apt in CI" and "patched" pull against
+# each other, and the schedule is what settles it. Weekly: `apt-get` runs, the base comes
+# back patched, and a new digest is published whether or not anyone thought about it.
+#
+# WHAT IT PUBLISHES IS A DIGEST. `.github/toolchain-image` pins `@sha256:…`, not a tag: a
+# tag can be moved under us by anyone who can push to the registry, a digest cannot, and
+# it is also what makes "which environment built this binary" a question with an answer.
+# Updating is one line in that file — and the run below prints exactly what to put there.
+name: Toolchain image
+
+on:
+  # The four files the image is made of. Change one and the image is stale by definition.
+  push:
+    paths:
+      - 'Containerfile'
+      - 'rust-toolchain.toml'
+      - '.node-version'
+      - 'package.json'
+      - '.github/workflows/toolchain-image.yml'
+  # Monday, early. One line to change if weekly turns out to be the wrong cadence.
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: 📦 Build and publish
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+
+      # The tag is the hash of what goes into the image, so an unchanged toolchain keeps
+      # its tag and a changed one cannot reuse it.
+      #
+      # `package.json` counts BY ONE LINE. The image reads `packageManager` from it; the
+      # file also carries the release number, so hashing all of it would publish a new
+      # image on every version bump — an image per release, which is the thing this
+      # design exists to avoid. Invisible until a release, which is why it is written down.
+      - name: Compute the tag from what the image is made of
+        id: tag
+        run: |
+          set -eu
+          hash="$( { cat Containerfile rust-toolchain.toml .node-version; \
+                     sed -n 's/.*"packageManager" *: *"\([^"]*\)".*/\1/p' package.json; } \
+                   | sha256sum | cut -c1-12 )"
+          image="ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/rite-ci"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "ref=$image:$hash" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # A scheduled run REBUILDS even when the tag exists: that is the whole point of the
+      # schedule — same recipe, newer packages, new digest. A push that changed nothing
+      # relevant would otherwise rebuild for nothing, so only the clock forces it.
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Containerfile
+          platforms: linux/amd64
+          push: true
+          no-cache: ${{ github.event_name == 'schedule' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: ${{ steps.tag.outputs.ref }}
+
+      # REPORTS, DOES NOT GATE, and that is a decision rather than an omission. A build
+      # image legitimately carries development libraries with open advisories; a weekly
+      # gate that cries wolf is a weekly gate nobody reads. `ignore-unfixed` keeps what is
+      # actionable — an advisory with a fix available means the rebuild above did not take
+      # it. Turn `exit-code` to 1 once a few weeks of this output say what normal looks like.
+      # `continue-on-error` for the same reason it reports rather than gates: the scanner
+      # downloads its own database, and an outage there must not stop the image from being
+      # published. A step that cannot fail anything should not be able to fail the job.
+      - name: Scan it
+        uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: ${{ steps.tag.outputs.ref }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '0'
+
+      - name: Say what to pin
+        run: |
+          set -eu
+          digest='${{ steps.tag.outputs.image }}@${{ steps.build.outputs.digest }}'
+          {
+            echo '## The toolchain image this run published'
+            echo
+            echo '```'
+            echo "$digest"
+            echo '```'
+            echo
+            echo 'Put that line in `.github/toolchain-image` to make CI use it.'
+            echo 'Until then every job keeps running in the digest pinned there now.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$digest"
