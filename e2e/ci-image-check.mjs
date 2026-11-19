@@ -184,6 +184,36 @@ check('the acceptance fixture runs the binary on the ubuntu that built it', () =
   );
 });
 
+// THE SERVER IMAGE'S THREE STAGES SHARE ONE DEBIAN, and nothing held them together until
+// this check. `rust:<v>-<suite>` compiles the binary, `debian:<suite>-slim` runs it, and the
+// binary links against the builder's glibc: trixie is 2.41 and bookworm 2.36, so a builder
+// moved without the runtime fails at LOAD, not at build — the error arrives in production
+// wearing the mask of a broken server. The node stage is in the set because its bundle is
+// what rust-embed compiles in, and a suite that disagrees there is the same drift starting.
+//
+// It matters more here than anywhere else in this file: no CI job builds Containerfile.server
+// at all. The release workflow is the first thing that ever does, on four architectures, at
+// the one moment nobody wants to debug a loader error.
+check('the server image builds and runs on one Debian', () => {
+  const server = read('Containerfile.server');
+  const stages = [
+    [/^FROM node:\$\{NODE_VERSION\}-([a-z]+)-slim /m, 'the bundle stage'],
+    [/^FROM rust:\$\{RUST_VERSION\}-([a-z]+) /m, 'the builder stage'],
+    [/^FROM debian:([a-z]+)-slim@sha256:[0-9a-f]{64} /m, 'the runtime stage'],
+  ].map(([re, what]) => {
+    const m = server.match(re);
+    assert.ok(m, `Containerfile.server: ${what} no longer names a Debian suite the usual way`);
+    return { what, suite: m[1] };
+  });
+  const suites = [...new Set(stages.map((s) => s.suite))];
+  assert.equal(
+    suites.length,
+    1,
+    stages.map((s) => `${s.what} on ${s.suite}`).join(', ') +
+      ' — the binary has to find the glibc it was compiled against',
+  );
+});
+
 // The other half of "a local run and CI agree": not only the same distribution, but the
 // same WORK. This one was missing and it cost a false green — Dependabot #436 moved the
 // Containerfile to 25.10 and every CI tick came back successful, because the check that
